@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
+	"sort"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -15,27 +18,30 @@ type Proxy struct {
 	*mux.Router
 	upgrader    websocket.Upgrader
 	backendHost string
-	pathMap     map[string]bool
+	pathMap     map[string]int
+	initPort    int
 }
 
+// NewProxy creates a code-server proxy
 func NewProxy() *Proxy {
 	p := &Proxy{}
 	p.Router = mux.NewRouter()
-	p.Route()
+	p.route()
 	p.upgrader = websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
 	}
-	p.backendHost = "localhost:9051"
-	p.pathMap = make(map[string]bool)
+	p.initPort = 9051
+	p.backendHost = fmt.Sprintf("localhost:%d", p.initPort)
+	p.pathMap = make(map[string]int)
 	return p
 }
 
-func (p *Proxy) Route() {
+func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
 
 	// The sequence of following two rules can not exchange
-	p.HandleFunc("/", p.websocketHandler).Headers("Connection", "upgrade")
+	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
 
 	// "/path/opt/go" : Open /opt/go folder, redirect to /
 	// "/path/opt/nonexist" : 400 Bad Request
@@ -56,9 +62,13 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.pathMap[filePath] = true
+	if _, ok := p.pathMap[filePath]; !ok {
+		p.pathMap[filePath] = p.initPort
+		p.initPort++
+	}
+
 	redirectURL := url.URL{Scheme: "https", Host: r.Host}
-	http.Redirect(w, r, redirectURL.String(), http.StatusTemporaryRedirect)
+	http.Redirect(w, r, redirectURL.String()+filePath, http.StatusTemporaryRedirect)
 }
 
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +115,32 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	filePath := vars["filePath"]
+	filePath = fmt.Sprintf("/%s", filePath)
+
+	// TODO: Handle /opt/path
+	// TODO: Need to come up with better algorithm or data structure for path matching
+	keys := make([]string, len(p.pathMap))
+	for k := range p.pathMap {
+		keys = append(keys, k)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	fmt.Println(keys)
+
+	for _, k := range keys {
+		if strings.HasPrefix(r.RequestURI, k) {
+			r.RequestURI = strings.TrimPrefix(r.RequestURI, filePath)
+			break
+		}
+
+		if strings.HasPrefix(r.RequestURI, path.Dir(k)) {
+			r.RequestURI = strings.TrimPrefix(r.RequestURI, path.Dir(filePath))
+			break
+		}
+	}
+
 	backendHttpURL := url.URL{Scheme: "http", Host: p.backendHost, Path: r.RequestURI}
 	req, err := http.NewRequest(r.Method, backendHttpURL.String(), nil)
 	if err != nil {
@@ -158,4 +194,9 @@ func tunnel(dst, src *websocket.Conn) error {
 		return cerr
 	}
 	return nil
+}
+
+// runCodeServer starts a code-server instance
+func runCodeServer() {
+
 }
