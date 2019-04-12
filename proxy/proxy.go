@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -37,7 +36,14 @@ func (p *Proxy) Route() {
 
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/", p.websocketHandler).Headers("Connection", "upgrade")
-	p.HandleFunc("/{filePath:.*}", p.codeServerHandler)
+
+	// "/path/opt/go" : Open /opt/go folder, redirect to /
+	// "/path/opt/nonexist" : 400 Bad Request
+	p.HandleFunc("/path/{filePath:.*}", p.codeServerHandler)
+
+	// 1. Specify path, redirect to here
+	// 2. Don't specify path, redirect to 9051 (default)
+	p.HandleFunc("/{filePath:.*}", p.forwardRequestHandler)
 }
 
 func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,20 +51,14 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
 
-	if strings.HasPrefix(filePath, "/path") {
-		rURL := url.URL{Scheme: "https", Host: r.Host}
-		realPath := strings.TrimPrefix(filePath, "/path")
-		if _, err := os.Stat(realPath); os.IsNotExist(err) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Redirect(w, r, rURL.String(), http.StatusTemporaryRedirect)
-		}
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if ferr := p.forwardRequest(w, r); ferr != nil {
-		http.Error(w, ferr.Error(), http.StatusInternalServerError)
-	}
+	p.pathMap[filePath] = true
+	redirectURL := url.URL{Scheme: "https", Host: r.Host}
+	http.Redirect(w, r, redirectURL.String(), http.StatusTemporaryRedirect)
 }
 
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,18 +104,20 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) forwardRequest(w http.ResponseWriter, r *http.Request) error {
+func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	backendHttpURL := url.URL{Scheme: "http", Host: p.backendHost, Path: r.RequestURI}
 	req, err := http.NewRequest(r.Method, backendHttpURL.String(), nil)
 	if err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	req.Header = r.Header
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	for h, vals := range resp.Header {
@@ -125,9 +127,9 @@ func (p *Proxy) forwardRequest(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if _, cerr := io.Copy(w, resp.Body); cerr != nil {
-		return cerr
+		http.Error(w, cerr.Error(), http.StatusInternalServerError)
+		return
 	}
-	return nil
 }
 
 // transfer populates message from src to dst
