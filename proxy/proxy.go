@@ -119,30 +119,10 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
 
-	// TODO: Handle /opt/path
-	// TODO: Need to come up with better algorithm or data structure for path matching
-	keys := make([]string, len(p.pathMap))
-	for k := range p.pathMap {
-		keys = append(keys, k)
-	}
+	r.RequestURI = p.parseRequestPath(r.RequestURI, filePath)
 
-	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	fmt.Println(keys)
-
-	for _, k := range keys {
-		if strings.HasPrefix(r.RequestURI, k) {
-			r.RequestURI = strings.TrimPrefix(r.RequestURI, filePath)
-			break
-		}
-
-		if strings.HasPrefix(r.RequestURI, path.Dir(k)) {
-			r.RequestURI = strings.TrimPrefix(r.RequestURI, path.Dir(filePath))
-			break
-		}
-	}
-
-	backendHttpURL := url.URL{Scheme: "http", Host: p.backendHost, Path: r.RequestURI}
-	req, err := http.NewRequest(r.Method, backendHttpURL.String(), nil)
+	backendHTTPURL := url.URL{Scheme: "http", Host: p.backendHost, Path: r.RequestURI}
+	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -166,6 +146,30 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, cerr.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (p *Proxy) parseRequestPath(requestPath, filePath string) string {
+	// TODO: Handle /opt/path
+	// TODO: Need to come up with better algorithm or data structure for path matching
+	keys := make([]string, len(p.pathMap))
+	for k := range p.pathMap {
+		keys = append(keys, k)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	for _, k := range keys {
+		if strings.HasPrefix(requestPath, k) {
+			requestPath = strings.TrimPrefix(requestPath, filePath)
+			break
+		}
+
+		if strings.HasPrefix(requestPath, path.Dir(k)) {
+			requestPath = strings.TrimPrefix(requestPath, path.Dir(filePath))
+			break
+		}
+	}
+
+	return requestPath
 }
 
 // transfer populates message from src to dst
@@ -194,9 +198,4 @@ func tunnel(dst, src *websocket.Conn) error {
 		return cerr
 	}
 	return nil
-}
-
-// runCodeServer starts a code-server instance
-func runCodeServer() {
-
 }
