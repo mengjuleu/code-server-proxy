@@ -1,0 +1,10 @@
+servers:
+  - server1:
+    path: /opt/python/ladle
+    port: 9052
+  - server2:
+    path: /opt/go/src/github.com/code-server-proxy
+    port: 9053
+  - server3:
+    path: /opt/python/domains
+    port: 9054
