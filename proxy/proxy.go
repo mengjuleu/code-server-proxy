@@ -14,27 +14,56 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Proxy is a code-server proxy
 type Proxy struct {
 	*mux.Router
-	upgrader    websocket.Upgrader
-	backendHost string
-	pathMap     map[string]int
-	initPort    int
+	upgrader websocket.Upgrader
+	code     Code
+	pathMap  map[string]int
+}
+
+// Code represents the code-server structures
+type Code struct {
+	Servers []struct {
+		Path string
+		Port int
+	}
+}
+
+// UseUpgrader sets the websocket HTTP upgrader
+func UseUpgrader(upgrader websocket.Upgrader) func(*Proxy) error {
+	return func(p *Proxy) error {
+		p.upgrader = upgrader
+		return nil
+	}
+}
+
+// UseCode sets the code-server configs
+func UseCode(code Code) func(*Proxy) error {
+	return func(p *Proxy) error {
+		p.code = code
+		return nil
+	}
 }
 
 // NewProxy creates a code-server proxy
-func NewProxy() *Proxy {
+func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 	p := &Proxy{}
+	for _, f := range options {
+		if err := f(p); err != nil {
+			return nil, err
+		}
+	}
+
+	p.pathMap = make(map[string]int)
+	for _, s := range p.code.Servers {
+		p.pathMap[s.Path] = s.Port
+	}
+
 	p.Router = mux.NewRouter()
 	p.route()
-	p.upgrader = websocket.Upgrader{
-		ReadBufferSize:  4096,
-		WriteBufferSize: 4096,
-	}
-	p.initPort = 9051
-	p.backendHost = fmt.Sprintf("localhost:%d", p.initPort)
-	p.pathMap = make(map[string]int)
-	return p
+
+	return p, nil
 }
 
 func (p *Proxy) route() {
@@ -63,8 +92,8 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, ok := p.pathMap[filePath]; !ok {
-		p.pathMap[filePath] = p.initPort
-		p.initPort++
+		http.Error(w, "Not registered", http.StatusBadRequest)
+		return
 	}
 
 	redirectURL := url.URL{Scheme: "https", Host: r.Host}
@@ -72,8 +101,13 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	filePath := vars["filePath"]
+	filePath = fmt.Sprintf("/%s", filePath)
+	backendHost := fmt.Sprintf("localhost:%d", p.pathMap[filePath])
+
 	// Don't need to handle path matching
-	backendWsURL := url.URL{Scheme: "ws", Host: p.backendHost}
+	backendWsURL := url.URL{Scheme: "ws", Host: backendHost}
 	back, _, err := websocket.DefaultDialer.Dial(backendWsURL.String(), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -118,10 +152,14 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
-
+	port := p.pathMatching(r.RequestURI, filePath)
+	if port == 0 {
+		port = 9051
+	}
+	backendHost := fmt.Sprintf("localhost:%d", port)
 	r.RequestURI = p.parseRequestPath(r.RequestURI, filePath)
 
-	backendHTTPURL := url.URL{Scheme: "http", Host: p.backendHost, Path: r.RequestURI}
+	backendHTTPURL := url.URL{Scheme: "http", Host: backendHost, Path: r.RequestURI}
 	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -157,19 +195,41 @@ func (p *Proxy) parseRequestPath(requestPath, filePath string) string {
 	}
 
 	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+
 	for _, k := range keys {
 		if strings.HasPrefix(requestPath, k) {
-			requestPath = strings.TrimPrefix(requestPath, filePath)
+			requestPath = strings.TrimPrefix(requestPath, k)
 			break
 		}
+	}
 
+	for _, k := range keys {
 		if strings.HasPrefix(requestPath, path.Dir(k)) {
-			requestPath = strings.TrimPrefix(requestPath, path.Dir(filePath))
+			requestPath = strings.TrimPrefix(requestPath, path.Dir(k))
 			break
 		}
 	}
 
 	return requestPath
+}
+
+func (p *Proxy) pathMatching(requestPath, filePath string) int {
+	var port int
+
+	keys := make([]string, len(p.pathMap))
+	for k := range p.pathMap {
+		keys = append(keys, k)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+
+	for _, k := range keys {
+		if strings.HasPrefix(requestPath, k) {
+			port = p.pathMap[k]
+			break
+		}
+	}
+	return port
 }
 
 // transfer populates message from src to dst
