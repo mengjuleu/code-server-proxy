@@ -92,7 +92,8 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, ok := p.pathMap[filePath]; !ok {
-		http.Error(w, "Not registered", http.StatusBadRequest)
+		errMessage := fmt.Sprintf("File %s is not registered", filePath)
+		http.Error(w, errMessage, http.StatusBadRequest)
 		return
 	}
 
@@ -153,13 +154,10 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
 
-	port := p.pathMatching(r.RequestURI, filePath)
-	if port == 0 {
-		port = 9051
-	}
+	port := p.pathToPort(r.RequestURI, filePath)
 	backendHost := fmt.Sprintf("localhost:%d", port)
 
-	r.RequestURI = p.parseRequestPath(r.RequestURI, filePath)
+	r.RequestURI = p.cleanRequestPath(r.RequestURI, filePath)
 	backendHTTPURL := url.URL{Scheme: "http", Host: backendHost, Path: r.RequestURI}
 
 	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
@@ -188,7 +186,7 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) parseRequestPath(requestPath, filePath string) string {
+func (p *Proxy) cleanRequestPath(requestPath, filePath string) string {
 	// TODO: Handle /opt/path
 	// TODO: Need to come up with better algorithm or data structure for path matching
 	keys := make([]string, len(p.pathMap))
@@ -215,11 +213,10 @@ func (p *Proxy) parseRequestPath(requestPath, filePath string) string {
 	return requestPath
 }
 
-func (p *Proxy) pathMatching(requestPath, filePath string) int {
-	var port int
-	//port := p.code.Servers[0].Port
-
-	keys := make([]string, len(p.pathMap))
+// pathToPort returns the port corresponding to the path.
+func (p *Proxy) pathToPort(requestPath, filePath string) int {
+	port := p.code.Servers[0].Port
+	keys := []string{}
 	for k := range p.pathMap {
 		keys = append(keys, k)
 	}
