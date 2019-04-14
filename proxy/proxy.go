@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,6 +70,8 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 
 func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
+
+	p.HandleFunc("/code-servers", p.listHandler)
 
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
@@ -186,6 +189,17 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, cerr.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (p *Proxy) listHandler(w http.ResponseWriter, r *http.Request) {
+	b, err := json.Marshal(p.code)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(b)
 }
 
 func (p *Proxy) cleanRequestPath(requestPath string) string {
