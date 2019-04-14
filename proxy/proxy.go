@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sort"
 	"strings"
 
+	"github.com/armon/go-radix"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
@@ -19,7 +19,7 @@ type Proxy struct {
 	*mux.Router
 	upgrader websocket.Upgrader
 	code     Code
-	pathMap  map[string]int
+	portMap  *radix.Tree
 }
 
 // Code represents the code-server structures
@@ -55,9 +55,10 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 		}
 	}
 
-	p.pathMap = make(map[string]int)
+	p.portMap = radix.New()
 	for _, s := range p.code.Servers {
-		p.pathMap[s.Path] = s.Port
+		p.portMap.Insert(s.Path, s.Port)
+		p.portMap.Insert(path.Dir(s.Path), s.Port)
 	}
 
 	p.Router = mux.NewRouter()
@@ -91,7 +92,7 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := p.pathMap[filePath]; !ok {
+	if _, ok := p.portMap.Get(filePath); !ok {
 		errMessage := fmt.Sprintf("File %s is not registered", filePath)
 		http.Error(w, errMessage, http.StatusBadRequest)
 		return
@@ -105,7 +106,8 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
-	backendHost := fmt.Sprintf("localhost:%d", p.pathMap[filePath])
+	port, _ := p.portMap.Get(filePath)
+	backendHost := fmt.Sprintf("localhost:%d", port)
 
 	// Don't need to handle path matching
 	backendWsURL := url.URL{Scheme: "ws", Host: backendHost}
@@ -154,10 +156,10 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
 
-	port := p.pathToPort(r.RequestURI, filePath)
+	port := p.pathToPort(r.RequestURI)
 	backendHost := fmt.Sprintf("localhost:%d", port)
 
-	r.RequestURI = p.cleanRequestPath(r.RequestURI, filePath)
+	r.RequestURI = p.cleanRequestPath(r.RequestURI)
 	backendHTTPURL := url.URL{Scheme: "http", Host: backendHost, Path: r.RequestURI}
 
 	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
@@ -186,48 +188,19 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) cleanRequestPath(requestPath, filePath string) string {
-	// TODO: Handle /opt/path
-	// TODO: Need to come up with better algorithm or data structure for path matching
-	keys := make([]string, len(p.pathMap))
-	for k := range p.pathMap {
-		keys = append(keys, k)
-	}
-
-	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-
-	for _, k := range keys {
-		if strings.HasPrefix(requestPath, k) {
-			requestPath = strings.TrimPrefix(requestPath, k)
-			break
-		}
-	}
-
-	for _, k := range keys {
-		if strings.HasPrefix(requestPath, path.Dir(k)) {
-			requestPath = strings.TrimPrefix(requestPath, path.Dir(k))
-			break
-		}
-	}
+func (p *Proxy) cleanRequestPath(requestPath string) string {
+	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
+	requestPath = strings.TrimPrefix(requestPath, prefix)
 
 	return requestPath
 }
 
 // pathToPort returns the port corresponding to the path.
-func (p *Proxy) pathToPort(requestPath, filePath string) int {
+func (p *Proxy) pathToPort(requestPath string) int {
 	port := p.code.Servers[0].Port
-	keys := []string{}
-	for k := range p.pathMap {
-		keys = append(keys, k)
-	}
 
-	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-
-	for _, k := range keys {
-		if strings.HasPrefix(requestPath, k) {
-			port = p.pathMap[k]
-			break
-		}
+	if _, val, ok := p.portMap.LongestPrefix(requestPath); ok {
+		port = val.(int)
 	}
 	return port
 }
