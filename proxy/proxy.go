@@ -154,6 +154,9 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	filePath = fmt.Sprintf("/%s", filePath)
 
 	port := p.pathMatching(r.RequestURI, filePath)
+	if port == 0 {
+		port = 9051
+	}
 	backendHost := fmt.Sprintf("localhost:%d", port)
 
 	r.RequestURI = p.parseRequestPath(r.RequestURI, filePath)
@@ -213,8 +216,8 @@ func (p *Proxy) parseRequestPath(requestPath, filePath string) string {
 }
 
 func (p *Proxy) pathMatching(requestPath, filePath string) int {
-	//var port int
-	port := p.code.Servers[0].Port
+	var port int
+	//port := p.code.Servers[0].Port
 
 	keys := make([]string, len(p.pathMap))
 	for k := range p.pathMap {
