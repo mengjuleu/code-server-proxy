@@ -10,6 +10,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/armon/go-radix"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -21,6 +23,7 @@ type Proxy struct {
 	upgrader websocket.Upgrader
 	code     Code
 	portMap  *radix.Tree
+	logger   *logrus.Logger
 }
 
 // Code represents the code-server structures
@@ -28,6 +31,14 @@ type Code struct {
 	Servers []struct {
 		Path string
 		Port int
+	}
+}
+
+// UseLogger sets proxy's logger
+func UseLogger(logger *logrus.Logger) func(*Proxy) error {
+	return func(p *Proxy) error {
+		p.logger = logger
+		return nil
 	}
 }
 
@@ -109,11 +120,19 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
-	port, _ := p.portMap.Get(filePath)
-	backendHost := fmt.Sprintf("localhost:%d", port)
 
-	// Don't need to handle path matching
-	backendWsURL := url.URL{Scheme: "ws", Host: backendHost}
+	port, _ := p.portMap.Get(filePath)
+	backendWsURL := url.URL{
+		Scheme: "ws",
+		Host:   fmt.Sprintf("localhost:%d", port),
+	}
+
+	p.logger.WithFields(logrus.Fields{
+		"filePath": filePath,
+		"backend":  backendWsURL.String(),
+	}).Info("Receive websocket connection request")
+
+	// websocket connection to backend
 	back, _, err := websocket.DefaultDialer.Dial(backendWsURL.String(), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -133,10 +152,10 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	b2f := make(chan error)
 
 	// goroutine that transfers messages from backend to frontend
-	go transfer(front, back, b2f)
+	go p.transfer(front, back, b2f)
 
 	// goroutine that transfers messages from frontend tp backend
-	go transfer(back, front, f2b)
+	go p.transfer(back, front, f2b)
 
 	// If either direction fails, finish current websocket session
 	select {
@@ -159,11 +178,19 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := vars["filePath"]
 	filePath = fmt.Sprintf("/%s", filePath)
 
-	port := p.pathToPort(r.RequestURI)
-	backendHost := fmt.Sprintf("localhost:%d", port)
+	host := fmt.Sprintf("localhost:%d", p.pathToPort(r.RequestURI))
+	cleanedPath := p.cleanRequestPath(r.RequestURI)
+	backendHTTPURL := url.URL{
+		Scheme: "http",
+		Host:   host,
+		Path:   cleanedPath,
+	}
 
-	r.RequestURI = p.cleanRequestPath(r.RequestURI)
-	backendHTTPURL := url.URL{Scheme: "http", Host: backendHost, Path: r.RequestURI}
+	p.logger.WithFields(logrus.Fields{
+		"host":    host,
+		"path":    cleanedPath,
+		"backend": backendHTTPURL.String(),
+	}).Info("Receive forward request")
 
 	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
 	if err != nil {
@@ -199,7 +226,10 @@ func (p *Proxy) listHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(b)
+
+	if _, werr := w.Write(b); werr != nil {
+		http.Error(w, werr.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (p *Proxy) cleanRequestPath(requestPath string) string {
@@ -220,10 +250,10 @@ func (p *Proxy) pathToPort(requestPath string) int {
 }
 
 // transfer populates message from src to dst
-func transfer(dst, src *websocket.Conn, ch chan error) {
+func (p *Proxy) transfer(dst, src *websocket.Conn, ch chan error) {
 	for {
 		if terr := tunnel(dst, src); terr != nil {
-			fmt.Println(terr)
+			p.logger.Info(terr.Error())
 			ch <- terr
 		}
 	}

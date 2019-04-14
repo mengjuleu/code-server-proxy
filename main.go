@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	"github.com/sirupsen/logrus"
 
 	"gopkg.in/urfave/cli.v1"
 
@@ -35,7 +38,7 @@ func main() {
 			Destination: &logFormat,
 			Usage:       "--log-format=json can only use json or text",
 			EnvVar:      "LOG_FORMAT",
-			Value:       "json",
+			Value:       "text",
 		},
 		cli.StringFlag{
 			Name:        "b, bind",
@@ -61,22 +64,35 @@ func main() {
 		// Load code-server configs
 		code, err := loadConfig(configFile)
 		if err != nil {
-			return err
+			logrus.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Configure logger
+		logger, err := configureLogger(logFormat)
+		if err != nil {
+			logrus.Fatalf("Failed to configure logger: %v", err)
 		}
 
 		// Create proxy instance
 		p, err := proxy.NewProxy(
 			proxy.UseUpgrader(upgrader),
 			proxy.UseCode(code),
+			proxy.UseLogger(logger),
 		)
 		if err != nil {
-			return err
+			logrus.Fatalf("Failed to create proxy: %v", err)
 		}
 
 		// Serve HTTP request
+		logger.Infof("code-server-proxy - running on '%s', pid: %d",
+			bind,
+			os.Getpid(),
+		)
+
 		if err = http.ListenAndServe(bind, p); err != nil {
-			return err
+			logrus.Fatalf("Failed to serve: %v", err)
 		}
+
 		return nil
 	}
 
@@ -99,4 +115,20 @@ func loadConfig(config string) (proxy.Code, error) {
 		return code, err
 	}
 	return code, nil
+}
+
+func configureLogger(format string) (*logrus.Logger, error) {
+	logger := logrus.New()
+	logger.Level = logrus.InfoLevel
+
+	switch format {
+	case "json":
+		logger.Formatter = &logrus.JSONFormatter{FieldMap: logrus.FieldMap{logrus.FieldKeyMsg: "message"}}
+	case "text":
+		logger.Formatter = &logrus.TextFormatter{}
+	default:
+		return nil, errors.New("Invalid log format value")
+	}
+
+	return logger, nil
 }
