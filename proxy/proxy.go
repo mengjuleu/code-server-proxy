@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,6 +33,23 @@ type Code struct {
 		Path string
 		Port int
 	}
+}
+
+// CodeServerStatus represents the health status of a code-server
+type CodeServerStatus struct {
+	Port  int
+	State string
+}
+
+// HealthcheckResponse is the response structure of code-server-proxy
+type HealthcheckResponse struct {
+	CodeServerProxy string
+	CodeServers     []CodeServerStatus
+}
+
+// CodeServerPingResponse represents the response of ping request
+type CodeServerPingResponse struct {
+	Hostname string `json:"hostname"`
 }
 
 // UseLogger sets proxy's logger
@@ -172,8 +190,49 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 // healthCheckHandler handles healthcheck request
 func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	if _, err := io.WriteString(w, "OK"); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	healthcheckResponse := HealthcheckResponse{}
+
+	for _, s := range p.code.Servers {
+		state := "NOT OK"
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
+		if err == nil {
+			defer resp.Body.Close()
+
+			codeServerPingResponse := CodeServerPingResponse{}
+			b, err := ioutil.ReadAll(resp.Body)
+
+			if err != nil {
+				p.logger.Fatalf("Failed to read ping request: %v", err)
+			}
+			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
+				p.logger.Fatalf("Failed to unmarshal response body: %v", uerr)
+			}
+
+			if codeServerPingResponse.Hostname != "" {
+				state = "OK"
+			}
+		}
+
+		healthcheckResponse.CodeServers = append(
+			healthcheckResponse.CodeServers,
+			CodeServerStatus{
+				Port:  s.Port,
+				State: state,
+			},
+		)
+	}
+
+	healthcheckResponse.CodeServerProxy = "OK"
+
+	w.Header().Set("Content-Type", "application/json")
+
+	b, err := json.Marshal(healthcheckResponse)
+	if err != nil {
+		p.logger.Fatalf("Failed to marshal healthCheckResponse: %v", err)
+	}
+
+	if _, werr := w.Write(b); werr != nil {
+		http.Error(w, werr.Error(), http.StatusInternalServerError)
 	}
 }
 
