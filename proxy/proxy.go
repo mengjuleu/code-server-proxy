@@ -21,25 +21,29 @@ import (
 // Proxy is a code-server proxy
 type Proxy struct {
 	*mux.Router
-	upgrader websocket.Upgrader
-	code     Code
-	portMap  *radix.Tree
-	logger   *logrus.Logger
+	upgrader    websocket.Upgrader
+	code        Code
+	portMap     *radix.Tree
+	logger      *logrus.Logger
+	aliasToPath map[string]string
 }
 
 // Code represents the code-server structures
 type Code struct {
 	Servers []struct {
-		Path string
-		Port int
+		Path  string
+		Alias string
+		Port  int
 	}
 }
 
 // CodeServerStatus represents the health status of a code-server
 type CodeServerStatus struct {
-	Port  int
-	State string
-	URL   string
+	Port     int
+	State    string
+	URL      string
+	Alias    string
+	AliasURL string
 }
 
 // HealthcheckResponse is the response structure of code-server-proxy
@@ -86,10 +90,18 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 		}
 	}
 
+	// Construct radix tree
 	p.portMap = radix.New()
 	for _, s := range p.code.Servers {
 		p.portMap.Insert(s.Path, s.Port)
 		p.portMap.Insert(path.Dir(s.Path), s.Port)
+		p.portMap.Insert(fmt.Sprintf("/%s", s.Alias), s.Port)
+	}
+
+	// Create path to its alias mapping
+	p.aliasToPath = make(map[string]string)
+	for _, s := range p.code.Servers {
+		p.aliasToPath[s.Alias] = s.Path
 	}
 
 	p.Router = mux.NewRouter()
@@ -138,7 +150,12 @@ func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["filePath"]
-	filePath = fmt.Sprintf("/%s", filePath)
+
+	if path, ok := p.aliasToPath[filePath]; !ok {
+		filePath = fmt.Sprintf("/%s", filePath)
+	} else {
+		filePath = path
+	}
 
 	port, _ := p.portMap.Get(filePath)
 	backendWsURL := url.URL{
@@ -215,12 +232,15 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
+		aliasURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Alias}
 		healthcheckResponse.CodeServers = append(
 			healthcheckResponse.CodeServers,
 			CodeServerStatus{
-				Port:  s.Port,
-				State: state,
-				URL:   backendURL.String(),
+				Port:     s.Port,
+				State:    state,
+				URL:      backendURL.String(),
+				Alias:    s.Alias,
+				AliasURL: aliasURL.String(),
 			},
 		)
 	}
@@ -240,10 +260,6 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	filePath := vars["filePath"]
-	filePath = fmt.Sprintf("/%s", filePath)
-
 	host := fmt.Sprintf("localhost:%d", p.pathToPort(r.RequestURI))
 	cleanedPath := p.cleanRequestPath(r.RequestURI)
 	backendHTTPURL := url.URL{
