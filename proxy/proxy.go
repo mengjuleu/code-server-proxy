@@ -39,6 +39,7 @@ type Code struct {
 type CodeServerStatus struct {
 	Port  int
 	State string
+	URL   string
 }
 
 // HealthcheckResponse is the response structure of code-server-proxy
@@ -213,11 +214,13 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
 		healthcheckResponse.CodeServers = append(
 			healthcheckResponse.CodeServers,
 			CodeServerStatus{
 				Port:  s.Port,
 				State: state,
+				URL:   backendURL.String(),
 			},
 		)
 	}
