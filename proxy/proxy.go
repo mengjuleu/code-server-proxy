@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
 
@@ -113,38 +112,10 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
 
-	p.HandleFunc("/code-servers", p.listHandler)
-
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
 
-	// "/path/opt/go" : Open /opt/go folder, redirect to /
-	// "/path/opt/nonexist" : 400 Bad Request
-	p.HandleFunc("/path/{filePath:.*}", p.codeServerHandler)
-
-	// 1. Specify path, redirect to here
-	// 2. Don't specify path, redirect to 9051 (default)
 	p.HandleFunc("/{filePath:.*}", p.forwardRequestHandler)
-}
-
-func (p *Proxy) codeServerHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	filePath := vars["filePath"]
-	filePath = fmt.Sprintf("/%s", filePath)
-
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if _, ok := p.portMap.Get(filePath); !ok {
-		errMessage := fmt.Sprintf("File %s is not registered", filePath)
-		http.Error(w, errMessage, http.StatusBadRequest)
-		return
-	}
-
-	redirectURL := url.URL{Scheme: "https", Host: r.Host}
-	http.Redirect(w, r, redirectURL.String()+filePath, http.StatusTemporaryRedirect)
 }
 
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
@@ -297,20 +268,6 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if _, cerr := io.Copy(w, resp.Body); cerr != nil {
 		http.Error(w, cerr.Error(), http.StatusInternalServerError)
 		return
-	}
-}
-
-func (p *Proxy) listHandler(w http.ResponseWriter, r *http.Request) {
-	b, err := json.Marshal(p.code)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if _, werr := w.Write(b); werr != nil {
-		http.Error(w, werr.Error(), http.StatusInternalServerError)
 	}
 }
 
