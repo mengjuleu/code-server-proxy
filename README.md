@@ -66,3 +66,7 @@ code-server-proxy \
 --bind=9999 \
 --config=/path/to/code.yaml
 ```
+
+## Step 5. Open Browser
+
+Go to `https://<your host name>/path/<path to your project>`. For example, `https://mleu.coolman.com/path/opt/go/src/github.com/code-server-proxy`
