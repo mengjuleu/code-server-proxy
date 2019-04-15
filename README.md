@@ -71,4 +71,5 @@ code-server-proxy \
 
 Go to `https://<your host name>/path/<path to your project>`.
 
-For example, `https://mleu.coolman.com/path/opt/go/src/github.com/code-server-proxy`
+For example, `https://mleu.coolman.com/path/opt/go/src/github.com/code-server-proxy`,
+where `https://mleu.coolman.com` is my domain name, `path` is requiired and `/opt/go/src/github.com/code-server-proxy` is the project path.
