@@ -127,13 +127,17 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		Host:   fmt.Sprintf("localhost:%d", port),
 	}
 
+	header := http.Header{
+		"Cookie": []string{r.Header.Get("Cookie")},
+	}
+
 	p.logger.WithFields(logrus.Fields{
 		"filePath": filePath,
 		"backend":  backendWsURL.String(),
 	}).Info("Receive websocket connection request")
 
 	// websocket connection to backend
-	back, _, err := websocket.DefaultDialer.Dial(backendWsURL.String(), nil)
+	back, _, err := websocket.DefaultDialer.Dial(backendWsURL.String(), header)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
