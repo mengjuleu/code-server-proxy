@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -335,7 +336,7 @@ func tunnel(dst, src *websocket.Conn) error {
 func LoadConfig(config string) (Code, error) {
 	code := Code{}
 
-	data, err := ioutil.ReadFile(config)
+	data, err := ioutil.ReadFile(filepath.Clean(config))
 	if err != nil {
 		return code, err
 	}
