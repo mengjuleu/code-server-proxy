@@ -37,11 +37,21 @@ servers:
 
 ### Step 3. Install Code-server-proxy
 
+Clone code-server-proxy repo and install: 
+
 ```bash
 git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
 cd $GOPATH/src/github.com/code-server-proxy
 make install
 ```
+
+Make sure you have `$GOPATH/bin` set up in `.bashrc` or `.zshrc`:
+
+```bash
+export PATH="$PATH:$GOPATH/bin"
+```
+
+Run help command of code-server-proxy
 
 ```bash
 $ code-server-proxy -h
