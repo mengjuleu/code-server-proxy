@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,23 +50,38 @@ func TestPathToPort(t *testing.T) {
 
 	data := []struct {
 		port int
-		path string
+		r    *http.Request
 	}{
 		{
 			9000,
-			"/a/b/c/mleu/cool",
+			&http.Request{
+				RequestURI: "/a/b/c/mleu/cool",
+			},
 		},
 		{
 			9001,
-			"/a/b/f/mleu/cool",
+			&http.Request{
+				RequestURI: "/a/b/f/mleu/cool",
+			},
 		},
 		{
 			9002,
-			"/a/d/e",
+			&http.Request{
+				RequestURI: "/a/d/e",
+			},
+		},
+		{
+			9000,
+			&http.Request{
+				RequestURI: "/main.css",
+				Header: http.Header{
+					"Referer": []string{"http://localhost/project1"},
+				},
+			},
 		},
 	}
 
 	for _, d := range data {
-		require.Equal(t, d.port, p.pathToPort(d.path))
+		require.Equal(t, d.port, p.getPort(d.r))
 	}
 }
