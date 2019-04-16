@@ -34,6 +34,7 @@ servers:
 
 ### Step 2. Configure Nginx to Allow Traffic to Code-server-proxy
 
+TBD
 
 ### Step 3. Install Code-server-proxy
 
