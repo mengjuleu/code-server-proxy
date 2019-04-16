@@ -1,3 +1,5 @@
+CMD=github.com/code-server-proxy/cmd/code-server-proxy
+
 all: test test-slow lint
 
 test: .gotdeps
