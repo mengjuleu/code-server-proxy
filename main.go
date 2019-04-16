@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/code-server-proxy/proxy"
 	"github.com/gorilla/websocket"
-	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -62,7 +60,7 @@ func main() {
 		}
 
 		// Load code-server configs
-		code, err := loadConfig(configFile)
+		code, err := proxy.LoadConfig(configFile)
 		if err != nil {
 			logrus.Fatalf("Failed to load config: %v", err)
 		}
@@ -100,21 +98,6 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-}
-
-// loadConfig loads the config file of code-server-proxy
-func loadConfig(config string) (proxy.Code, error) {
-	code := proxy.Code{}
-
-	data, err := ioutil.ReadFile(config)
-	if err != nil {
-		return code, err
-	}
-
-	if err := yaml.Unmarshal(data, &code); err != nil {
-		return code, err
-	}
-	return code, nil
 }
 
 func configureLogger(format string) (*logrus.Logger, error) {

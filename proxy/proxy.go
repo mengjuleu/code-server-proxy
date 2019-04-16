@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 
 	"github.com/armon/go-radix"
 	"github.com/gorilla/mux"
@@ -134,8 +135,13 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		Host:   fmt.Sprintf("localhost:%d", port),
 	}
 
+	cookies := []string{}
+	for _, cookie := range r.Cookies() {
+		cookies = append(cookies, cookie.String())
+	}
+
 	header := http.Header{
-		"Cookie": []string{r.Header.Get("Cookie")},
+		"Cookie": cookies,
 	}
 
 	p.logger.WithFields(logrus.Fields{
@@ -231,7 +237,7 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
-	host := fmt.Sprintf("localhost:%d", p.pathToPort(r.RequestURI))
+	host := fmt.Sprintf("localhost:%d", p.getPort(r))
 	cleanedPath := p.cleanRequestPath(r.RequestURI)
 	backendHTTPURL := url.URL{
 		Scheme: "http",
@@ -271,6 +277,7 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// cleanRequestPath removes unrelated prefix from request path
 func (p *Proxy) cleanRequestPath(requestPath string) string {
 	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
 	requestPath = strings.TrimPrefix(requestPath, prefix)
@@ -278,10 +285,18 @@ func (p *Proxy) cleanRequestPath(requestPath string) string {
 	return requestPath
 }
 
-// pathToPort returns the port corresponding to the path.
-func (p *Proxy) pathToPort(requestPath string) int {
-	port := p.code.Servers[0].Port
+// getPort returns the port corresponding to the path.
+func (p *Proxy) getPort(r *http.Request) int {
+	requestPath := r.RequestURI
+	if r.Referer() != "" {
+		u, err := url.Parse(r.Referer())
+		if err != nil {
+			p.logger.Fatalf("Failed to parse referer: %v", err)
+		}
+		requestPath = u.Path
+	}
 
+	port := p.code.Servers[0].Port
 	if _, val, ok := p.portMap.LongestPrefix(requestPath); ok {
 		port = val.(int)
 	}
@@ -314,4 +329,19 @@ func tunnel(dst, src *websocket.Conn) error {
 		return cerr
 	}
 	return nil
+}
+
+// LoadConfig loads the config file of code-server-proxy
+func LoadConfig(config string) (Code, error) {
+	code := Code{}
+
+	data, err := ioutil.ReadFile(config)
+	if err != nil {
+		return code, err
+	}
+
+	if err := yaml.Unmarshal(data, &code); err != nil {
+		return code, err
+	}
+	return code, nil
 }
