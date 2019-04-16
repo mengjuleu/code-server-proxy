@@ -1,4 +1,5 @@
 # code-server-proxy
+[![Build Status](https://travis-ci.org/mengjuleu/code-server-proxy.svg?branch=master)](https://travis-ci.org/mengjuleu/code-server-proxy)
 
 Code-server-proxy is a proxy for code-server, a service that allows us to open project with vscode in remote box.
 
