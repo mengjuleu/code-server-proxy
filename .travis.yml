@@ -1,0 +1,13 @@
+language: go
+
+go_import_path: github.com/code-server-proxy
+
+go:
+  - 1.11.5
+
+install:
+  - go get github.com/code-server-proxy
+  - make setup
+
+script:
+  - make
