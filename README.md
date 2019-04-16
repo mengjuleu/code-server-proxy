@@ -38,6 +38,12 @@ servers:
 ### Step 3. Install Code-server-proxy
 
 ```bash
+git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
+cd $GOPATH/src/github.com/code-server-proxy
+make install
+```
+
+```bash
 $ code-server-proxy -h
 NAME:
    code-server-proxy - Proxy proxies code-server traffic
