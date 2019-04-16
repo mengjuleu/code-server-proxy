@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 
 	"github.com/armon/go-radix"
 	"github.com/gorilla/mux"
@@ -271,6 +272,7 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// cleanRequestPath removes unrelated prefix from request path
 func (p *Proxy) cleanRequestPath(requestPath string) string {
 	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
 	requestPath = strings.TrimPrefix(requestPath, prefix)
@@ -314,4 +316,19 @@ func tunnel(dst, src *websocket.Conn) error {
 		return cerr
 	}
 	return nil
+}
+
+// LoadConfig loads the config file of code-server-proxy
+func LoadConfig(config string) (Code, error) {
+	code := Code{}
+
+	data, err := ioutil.ReadFile(config)
+	if err != nil {
+		return code, err
+	}
+
+	if err := yaml.Unmarshal(data, &code); err != nil {
+		return code, err
+	}
+	return code, nil
 }
