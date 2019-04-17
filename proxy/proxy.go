@@ -132,7 +132,7 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 }
 
 func (p *Proxy) route() {
-	p.HandleFunc("/healthcheck", p.healthCheckHandler)
+	p.HandleFunc("/healthcheck", p.HealthCheckHandler)
 
 	p.HandleFunc("/register", p.registerHandler).Methods("POST")
 	p.HandleFunc("/remove/{name}", p.removeHandler).Methods("DELETE")
@@ -207,8 +207,8 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// healthCheckHandler handles healthcheck request
-func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+// HealthCheckHandler handles healthcheck request
+func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	healthcheckResponse := HealthcheckResponse{}
 
 	for _, s := range p.code.Servers {
@@ -221,10 +221,10 @@ func (p *Proxy) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 			b, err := ioutil.ReadAll(resp.Body)
 
 			if err != nil {
-				p.logger.Fatalf("Failed to read ping request: %v", err)
+				p.logger.Errorf("Failed to read ping request: %v", err)
 			}
 			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
-				p.logger.Fatalf("Failed to unmarshal response body: %v", uerr)
+				p.logger.Errorf("Failed to unmarshal response body: %v", uerr)
 			}
 
 			if codeServerPingResponse.Hostname != "" {
@@ -354,7 +354,7 @@ func (p *Proxy) registerHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) removeHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
-
+	fmt.Println(p.aliasToPath, name)
 	if _, ok := p.aliasToPath[name]; !ok {
 		http.Error(w, fmt.Sprintf("Code-server %s doesn't exist", name), http.StatusBadRequest)
 		return
