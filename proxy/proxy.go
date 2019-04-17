@@ -134,7 +134,7 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
 
-	p.HandleFunc("/reload", p.reloadHandler).Methods("POST")
+	p.HandleFunc("/register", p.registerHandler).Methods("POST")
 
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
@@ -300,7 +300,7 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) reloadHandler(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) registerHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
 	var data ReloadRequest
