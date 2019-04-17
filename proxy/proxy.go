@@ -135,6 +135,7 @@ func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
 
 	p.HandleFunc("/register", p.registerHandler).Methods("POST")
+	p.HandleFunc("/remove/{name}", p.removeHandler).Methods("DELETE")
 
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
@@ -348,6 +349,28 @@ func (p *Proxy) registerHandler(w http.ResponseWriter, r *http.Request) {
 	p.aliasToPath[data.Name] = data.Folder
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (p *Proxy) removeHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := vars["name"]
+
+	if _, ok := p.aliasToPath[name]; !ok {
+		http.Error(w, fmt.Sprintf("Code-server %s doesn't exist", name), http.StatusBadRequest)
+		return
+	}
+
+	for i, server := range p.code.Servers {
+		if server.Alias == name {
+			p.code.Servers = append(p.code.Servers[:i], p.code.Servers[i+1:]...)
+			break
+		}
+	}
+
+	p.portMap.Delete(fmt.Sprintf("/%s", name))
+	delete(p.aliasToPath, name)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // cleanRequestPath removes unrelated prefix from request path
