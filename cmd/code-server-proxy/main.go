@@ -76,6 +76,7 @@ func main() {
 			proxy.UseUpgrader(upgrader),
 			proxy.UseCode(code),
 			proxy.UseLogger(logger),
+			proxy.UseConfig(configFile),
 		)
 		if err != nil {
 			logrus.Fatalf("Failed to create proxy: %v", err)
