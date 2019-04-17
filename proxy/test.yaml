@@ -1,13 +1,10 @@
 servers:
-  - server1:
-    path: /a/b/c
+  - path: /a/b/c
     port: 9000
     alias: project1
-  - server2:
-    path: /a/b/f
+  - path: /a/b/f
     port: 9001
     alias: project2
-  - server3:
-    path: /a/d/e
+  - path: /a/d/e
     port: 9002
     alias: project3

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -26,16 +27,20 @@ type Proxy struct {
 	code        Code
 	portMap     *radix.Tree
 	logger      *logrus.Logger
+	config      string
 	aliasToPath map[string]string
+}
+
+// Server represents a code-server
+type Server struct {
+	Path  string
+	Alias string
+	Port  int
 }
 
 // Code represents the code-server structures
 type Code struct {
-	Servers []struct {
-		Path  string
-		Alias string
-		Port  int
-	}
+	Servers []Server
 }
 
 // CodeServerStatus represents the health status of a code-server
@@ -56,6 +61,21 @@ type HealthcheckResponse struct {
 // CodeServerPingResponse represents the response of ping request
 type CodeServerPingResponse struct {
 	Hostname string `json:"hostname"`
+}
+
+// ReloadRequest represents the struct of reload request
+type ReloadRequest struct {
+	Folder string `json:"folder"`
+	Name   string `json:"name"`
+	Port   string `json:"port"`
+}
+
+// UseConfig sets config path
+func UseConfig(config string) func(*Proxy) error {
+	return func(p *Proxy) error {
+		p.config = config
+		return nil
+	}
 }
 
 // UseLogger sets proxy's logger
@@ -113,6 +133,8 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 
 func (p *Proxy) route() {
 	p.HandleFunc("/healthcheck", p.healthCheckHandler)
+
+	p.HandleFunc("/reload", p.reloadHandler).Methods("POST")
 
 	// The sequence of following two rules can not exchange
 	p.HandleFunc("/{filePath:.*}", p.websocketHandler).Headers("Connection", "upgrade")
@@ -278,6 +300,56 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p *Proxy) reloadHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+
+	var data ReloadRequest
+
+	if err := decoder.Decode(&data); err != nil {
+		p.logger.Errorf("Failed to decode: %v", err)
+		return
+	}
+
+	port, err := strconv.Atoi(data.Port)
+	if err != nil {
+		p.logger.Errorf("Failed to convert port to integer: %v", err)
+		return
+	}
+
+	// Prevent duplicated alias or port
+	for _, server := range p.code.Servers {
+		if server.Alias == data.Name {
+			http.Error(w, fmt.Sprintf("Name %s is in use", data.Name), http.StatusBadRequest)
+			return
+		}
+
+		if server.Port == port {
+			http.Error(w, fmt.Sprintf("Name %s is in use", data.Name), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Append the new code-server to existing slice
+	p.code.Servers = append(p.code.Servers, Server{
+		Path:  data.Folder,
+		Alias: data.Name,
+		Port:  port,
+	})
+
+	// Consolidate the new code object async
+	go WriteConfig(p.code, p.config)
+
+	// Store new path and port to radix tree
+	p.portMap.Insert(data.Folder, port)
+	p.portMap.Insert(path.Dir(data.Folder), port)
+	p.portMap.Insert(fmt.Sprintf("/%s", data.Name), port)
+
+	// Store new alias and name to map
+	p.aliasToPath[data.Name] = data.Folder
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // cleanRequestPath removes unrelated prefix from request path
 func (p *Proxy) cleanRequestPath(requestPath string) string {
 	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
@@ -345,4 +417,17 @@ func LoadConfig(config string) (Code, error) {
 		return code, err
 	}
 	return code, nil
+}
+
+// WriteConfig writes the config to config.yaml
+func WriteConfig(c Code, config string) error {
+	y, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+
+	if werr := ioutil.WriteFile(filepath.Clean(config), y, 0644); err != nil {
+		return werr
+	}
+	return nil
 }
