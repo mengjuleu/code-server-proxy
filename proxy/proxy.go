@@ -146,6 +146,7 @@ func (p *Proxy) route() {
 func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["filePath"]
+	filePath = strings.TrimSuffix(filePath, "/")
 
 	if path, ok := p.aliasToPath[filePath]; !ok {
 		filePath = fmt.Sprintf("/%s", filePath)
@@ -378,24 +379,28 @@ func (p *Proxy) cleanRequestPath(requestPath string) string {
 	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
 	requestPath = strings.TrimPrefix(requestPath, prefix)
 
-	return requestPath
+	return strings.Split(requestPath, "?")[0]
 }
 
 // getPort returns the port corresponding to the path.
 func (p *Proxy) getPort(r *http.Request) int {
 	requestPath := r.RequestURI
+	port := p.code.Servers[0].Port
+	if _, val, ok := p.portMap.LongestPrefix(requestPath); ok {
+		port = val.(int)
+	}
+
 	if r.Referer() != "" {
 		u, err := url.Parse(r.Referer())
 		if err != nil {
 			p.logger.Fatalf("Failed to parse referer: %v", err)
 		}
-		requestPath = u.Path
+
+		if _, val, ok := p.portMap.LongestPrefix(u.Path); ok {
+			port = val.(int)
+		}
 	}
 
-	port := p.code.Servers[0].Port
-	if _, val, ok := p.portMap.LongestPrefix(requestPath); ok {
-		port = val.(int)
-	}
 	return port
 }
 
