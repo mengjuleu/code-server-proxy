@@ -13,12 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type RegisterRequest struct {
-	Folder string `json:"folder"`
-	Name   string `json:"name"`
-	Port   string `json:"port"`
-}
-
 func newTestProxy() (*Proxy, error) {
 	code, err := LoadConfig("./test.yaml")
 	logger := logrus.New()

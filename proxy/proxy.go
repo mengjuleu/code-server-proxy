@@ -63,8 +63,8 @@ type CodeServerPingResponse struct {
 	Hostname string `json:"hostname"`
 }
 
-// ReloadRequest represents the struct of reload request
-type ReloadRequest struct {
+// RegisterRequest represents the struct of reload request
+type RegisterRequest struct {
 	Folder string `json:"folder"`
 	Name   string `json:"name"`
 	Port   string `json:"port"`
@@ -132,7 +132,7 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 }
 
 func (p *Proxy) route() {
-	p.HandleFunc("/healthcheck", p.HealthCheckHandler)
+	p.HandleFunc("/", p.HealthCheckHandler)
 
 	p.HandleFunc("/register", p.registerHandler).Methods("POST")
 	p.HandleFunc("/remove/{name}", p.removeHandler).Methods("DELETE")
@@ -152,6 +152,8 @@ func (p *Proxy) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		filePath = path
 	}
+
+	filePath = strings.TrimSuffix(filePath, "/")
 
 	port, _ := p.portMap.Get(filePath)
 	backendWsURL := url.URL{
@@ -304,7 +306,7 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) registerHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
-	var data ReloadRequest
+	var data RegisterRequest
 
 	if err := decoder.Decode(&data); err != nil {
 		p.logger.Errorf("Failed to decode: %v", err)
