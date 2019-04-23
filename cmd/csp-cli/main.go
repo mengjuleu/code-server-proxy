@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 
+	"github.com/code-server-proxy/proxy"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -14,10 +17,11 @@ const (
 	defaultProxyURL = "https://ide.mleumonster.devbucket.org"
 )
 
+var (
+	proxyURL string
+)
+
 func main() {
-	var (
-		proxyURL string
-	)
 
 	app := cli.NewApp()
 	app.Version = "Proxy CLI version 1.0"
@@ -29,6 +33,15 @@ func main() {
 			Destination: &proxyURL,
 			Usage:       "--proxy-url=url of code-server-proxy",
 			Value:       defaultProxyURL,
+		},
+	}
+
+	app.Commands = []cli.Command{
+		{
+			Name:    "list",
+			Aliases: []string{"ls"},
+			Usage:   "list available code-server projects",
+			Action:  listCmdHandler,
 		},
 	}
 
@@ -75,4 +88,25 @@ func chromeOptions(url string) []string {
 func commandExists(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+func listCmdHandler(c *cli.Context) error {
+	statusAPI := fmt.Sprintf("%s/", proxyURL)
+	resp, err := http.Get(statusAPI)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	heathcheckResponse := proxy.HealthcheckResponse{}
+	if derr := json.NewDecoder(resp.Body).Decode(&heathcheckResponse); derr != nil {
+		return derr
+	}
+
+	for _, server := range heathcheckResponse.CodeServers {
+		fmt.Printf("%-20s %s\n", server.Alias, server.State)
+	}
+
+	return nil
 }
