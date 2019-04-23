@@ -25,7 +25,7 @@ func main() {
 
 	app := cli.NewApp()
 	app.Version = "Proxy CLI version 1.0"
-	app.Usage = "csp-cli <project_name>"
+	app.Usage = "csp-cli is tool interacting with code-server-proxy"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -33,6 +33,7 @@ func main() {
 			Destination: &proxyURL,
 			Usage:       "--proxy-url=url of code-server-proxy",
 			Value:       defaultProxyURL,
+			EnvVar:      "PROXY_URL",
 		},
 	}
 
@@ -92,7 +93,7 @@ func commandExists(name string) bool {
 
 func listCmdHandler(c *cli.Context) error {
 	statusAPI := fmt.Sprintf("%s/", proxyURL)
-	resp, err := http.Get(statusAPI)
+	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
 		return err
 	}
