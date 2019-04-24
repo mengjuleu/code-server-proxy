@@ -106,6 +106,8 @@ CSP-CLI (Code-Server-Proxy CLI) is a client of code-server-proxy. We can sync lo
 
 ### Install csp-cli
 
+At our local box,
+
 ```bash
 > git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
 > pwd
