@@ -48,8 +48,6 @@ Make sure you have `$GOPATH/bin` and `code-server-proxy` set up in `.bashrc` or 
 
 ```bash
 export PATH="$PATH:$GOPATH/bin"
-export REMOTE_HOST="example@example.org"
-export PROXY_URL="https://your-code-server-proxy-url"
 ```
 
 `REMOTE_HOST` is the URL we ssh to.
@@ -108,8 +106,8 @@ CSP-CLI (Code-Server-Proxy CLI) is a client of code-server-proxy. We can sync lo
 
 ### Install csp-cli
 
-
 ```bash
+> git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
 > pwd
 $GOPATH/src/code-server-proxy
 > make install-cli
@@ -135,6 +133,13 @@ GLOBAL OPTIONS:
    --remote-host value  --remote-host=host of dev environment (default: "mleumonster@mleumonster.dev.devbucket.org") [$REMOTE_HOST]
    --help, -h           show help
    --version, -v        print the version
+```
+
+Setup required environment variables.
+
+```bash
+export REMOTE_HOST="example@example.org"
+export PROXY_URL="https://your-code-server-proxy-url"
 ```
 
 ### Common Usages
