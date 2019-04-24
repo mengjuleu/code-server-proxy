@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/code-server-proxy/proxy"
+	"github.com/pkg/browser"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -28,6 +29,15 @@ const (
 	vsCodeExtensionsDirEnv = "VSCODE_EXTENSIONS_DIR"
 	remoteSettingsDir      = ".local/share/code-server/User/"
 	remoteExtensionsDir    = ".local/share/code-server/extensions/"
+)
+
+// Chrome names
+const (
+	googleChrome       = "google-chrome"
+	googleChromeStable = "google-chrome-stable"
+	chromium           = "chromium"
+	chromiumBrowser    = "chromium-browser"
+	chromeMacOs        = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 )
 
 var (
@@ -99,8 +109,20 @@ func openBrowser(url string) error {
 	var openCmd *exec.Cmd
 	/* #nosec */
 	switch {
-	case commandExists("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
-		openCmd = exec.Command("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", chromeOptions...)
+	case commandExists(chromeMacOs):
+		openCmd = exec.Command(chromeMacOs, chromeOptions...)
+	case commandExists(googleChromeStable):
+		openCmd = exec.Command(googleChromeStable, chromeOptions...)
+	case commandExists(googleChrome):
+		openCmd = exec.Command(googleChrome, chromeOptions...)
+	case commandExists(chromium):
+		openCmd = exec.Command(chromium, chromeOptions...)
+	case commandExists(chromiumBrowser):
+		openCmd = exec.Command(chromiumBrowser, chromeOptions...)
+	default:
+		if err := browser.OpenURL(url); err != nil {
+			return err
+		}
 	}
 
 	if err := openCmd.Start(); err != nil {

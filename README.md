@@ -76,7 +76,7 @@ GLOBAL OPTIONS:
    --version, -v                   print the version
 ```
 
-## Step 4. Start Code-server-proxy
+### Step 4. Start Code-server-proxy
 
 ```bash
 code-server-proxy \
@@ -85,9 +85,39 @@ code-server-proxy \
 --config=/path/to/code.yaml
 ```
 
-## Step 5. Open Browser
+### Step 5. Open Browser
 
 Go to `https://<your host name>/path/{path to your project}`.
 
 For example, `https://mleu.coolman.com/path/opt/go/src/github.com/code-server-proxy`,
 where *https://mleuu.coolman.com* is my domain name, *path* is requiired and */opt/go/src/github.com/code-server-proxy* is the project path.
+
+## CSP-CLI
+
+CSP-CLI (Code-Server-Proxy CLI) is a client of code-server-proxy.
+
+```bash
+> csp-cli -h
+NAME:
+   csp-cli - csp-cli is tool interacting with code-server-proxy
+
+USAGE:
+   csp-cli [global options] command [command options] [arguments...]
+
+VERSION:
+   Proxy CLI version 1.0
+
+COMMANDS:
+     list, ls  list available code-server projects
+     sync, sc  Sync local vscode settings
+     help, h   Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --proxy-url value    --proxy-url=url of code-server-proxy (default: "https://ide.mleumonster.devbucket.org") [$PROXY_URL]
+   --remote-host value  --remote-host=host of dev environment (default: "mleumonster@mleumonster.dev.devbucket.org") [$REMOTE_HOST]
+   --help, -h           show help
+   --version, -v        print the version
+```
+
+
+
