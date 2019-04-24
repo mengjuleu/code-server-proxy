@@ -9,6 +9,9 @@ import (
 	"path"
 	"testing"
 
+	"github.com/code-server-proxy/healthproto"
+	"github.com/golang/protobuf/proto"
+
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
@@ -98,7 +101,7 @@ func TestHealthCheckHandler(t *testing.T) {
 	p, err := newTestProxy()
 	require.NoError(t, err)
 
-	req, err := http.NewRequest("GET", "/healthcheck", nil)
+	req, err := http.NewRequest("GET", "/", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -109,6 +112,31 @@ func TestHealthCheckHandler(t *testing.T) {
 
 	resp := HealthcheckResponse{}
 	uerr := json.Unmarshal(rr.Body.Bytes(), &resp)
+	require.NoError(t, uerr)
+
+	fmt.Println(resp.CodeServerProxy)
+	require.Equal(t, "OK", resp.CodeServerProxy, "incorrect code-server-proxy status")
+
+	for _, status := range resp.CodeServers {
+		require.Equal(t, "NOT OK", status.State, "incorrect code-server status")
+	}
+}
+
+func TestStatusHandler(t *testing.T) {
+	p, err := newTestProxy()
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("GET", "/status", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(p.statusHandler)
+
+	handler.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, "incorrect response code")
+
+	resp := healthproto.HealthCheck{}
+	uerr := proto.Unmarshal(rr.Body.Bytes(), &resp)
 	require.NoError(t, uerr)
 
 	require.Equal(t, "OK", resp.CodeServerProxy, "incorrect code-server-proxy status")

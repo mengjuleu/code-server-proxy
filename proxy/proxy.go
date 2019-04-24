@@ -12,10 +12,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/protobuf/proto"
+
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/armon/go-radix"
+	"github.com/code-server-proxy/healthproto"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
@@ -133,6 +136,7 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 
 func (p *Proxy) route() {
 	p.HandleFunc("/", p.HealthCheckHandler)
+	p.HandleFunc("/status", p.statusHandler)
 
 	p.HandleFunc("/register", p.registerHandler).Methods("POST")
 	p.HandleFunc("/remove/{name}", p.removeHandler).Methods("DELETE")
@@ -216,7 +220,8 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	for _, s := range p.code.Servers {
 		state := "NOT OK"
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-		if err == nil {
+
+		if err == nil && resp.StatusCode == http.StatusOK {
 			defer resp.Body.Close()
 
 			codeServerPingResponse := CodeServerPingResponse{}
@@ -255,6 +260,56 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(healthcheckResponse)
 	if err != nil {
 		p.logger.Fatalf("Failed to marshal healthCheckResponse: %v", err)
+	}
+
+	if _, werr := w.Write(b); werr != nil {
+		http.Error(w, werr.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (p *Proxy) statusHandler(w http.ResponseWriter, r *http.Request) {
+	healthCheck := healthproto.HealthCheck{}
+	healthCheck.CodeServerProxy = "OK"
+
+	for _, s := range p.code.Servers {
+		state := "NOT OK"
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
+
+		if err == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+
+			codeServerPingResponse := CodeServerPingResponse{}
+			b, err := ioutil.ReadAll(resp.Body)
+
+			if err != nil {
+				p.logger.Errorf("Failed to read ping request: %v", err)
+			}
+			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
+				p.logger.Errorf("Failed to unmarshal response body: %v", uerr)
+			}
+
+			if codeServerPingResponse.Hostname != "" {
+				state = "OK"
+			}
+		}
+
+		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
+		aliasURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Alias}
+		healthCheck.CodeServers = append(
+			healthCheck.CodeServers,
+			&healthproto.CodeServerStatus{
+				Port:     int64(s.Port),
+				State:    state,
+				Url:      backendURL.String(),
+				Alias:    s.Alias,
+				AliasURL: aliasURL.String(),
+			},
+		)
+	}
+
+	b, merr := proto.Marshal(&healthCheck)
+	if merr != nil {
+		p.logger.Errorf("Failed to marshal healthcheck object: %v", merr)
 	}
 
 	if _, werr := w.Write(b); werr != nil {
