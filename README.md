@@ -137,7 +137,7 @@ GLOBAL OPTIONS:
    --version, -v        print the version
 ```
 
-Setup required environment variables.
+Setup required environment variables in `.bashrc` or `.zshrc`.
 
 ```bash
 export REMOTE_HOST="example@example.org"
