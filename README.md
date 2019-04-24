@@ -104,9 +104,17 @@ where *https://mleuu.coolman.com* is my domain name, *path* is requiired and */o
 
 ## CSP-CLI
 
-CSP-CLI (Code-Server-Proxy CLI) is a client of code-server-proxy.
+CSP-CLI (Code-Server-Proxy CLI) is a client of code-server-proxy. We can sync local vscode settings and extensions with remote box.
+
+### Install csp-cli
+
 
 ```bash
+> pwd
+$GOPATH/src/code-server-proxy
+> make install-cli
+go install github.com/code-server-proxy/cmd/csp-cli
+>
 > csp-cli -h
 NAME:
    csp-cli - csp-cli is tool interacting with code-server-proxy
@@ -129,5 +137,26 @@ GLOBAL OPTIONS:
    --version, -v        print the version
 ```
 
+### Common Usages
+
+Sync your local vscode configuration, use the following command.
+
+
+```bash
+> csp-cli sync
+```
+Check available projects.
+
+```bash
+> csp-cli ls
+project1   OK
+project2   NOT OK
+```
+
+Open a project in local box. It opens our project with Chrome browser in app mode. 
+
+```bash
+> csp-cli project1
+```
 
 
