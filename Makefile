@@ -1,4 +1,5 @@
 CMD=github.com/code-server-proxy/cmd/code-server-proxy
+CLICMD=github.com/code-server-proxy/cmd/csp-cli
 
 all: test test-slow lint
 
@@ -20,6 +21,9 @@ setup: .gotglide .gotlint
 
 install: .gotdeps
 	go install $(CMD)
+
+install-cli:
+	go install $(CLICMD)
 
 .gotlint:
 	go get -u github.com/alecthomas/gometalinter
