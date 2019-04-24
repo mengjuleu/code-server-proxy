@@ -52,6 +52,9 @@ export REMOTE_HOST="example@example.org"
 export PROXY_URL="https://your-code-server-proxy-url"
 ```
 
+`REMOTE_HOST` is the URL we ssh to.
+`PROXY_URL` is the URL of our `code-server-proxy`.
+
 Run help command of code-server-proxy
 
 ```bash
@@ -84,6 +87,10 @@ code-server-proxy \
 --bind=9999 \
 --config=/path/to/code.yaml
 ```
+
+`bind` specifies the port that `code-server-proxy` listens to ($BIND).
+`log-format` specifies the format of logging (text or json).
+`config` specifies the file which includes `code-server` information (directory, port).
 
 ### Step 5. Open Browser
 
