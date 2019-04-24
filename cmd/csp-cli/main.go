@@ -31,13 +31,23 @@ const (
 	remoteExtensionsDir    = ".local/share/code-server/extensions/"
 )
 
-// Chrome names
+// Chrome binaries
 const (
 	googleChrome       = "google-chrome"
 	googleChromeStable = "google-chrome-stable"
 	chromium           = "chromium"
 	chromiumBrowser    = "chromium-browser"
 	chromeMacOs        = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+)
+
+// Chrome settings directory
+const (
+	vscodeLinuxSettings  = "$HOME/.config/Code/User/"
+	vscodeDarwinSettings = "$HOME/Library/Application Support/Code/User/"
+)
+
+const (
+	vscodeExtensions = "$HOME/.vscode/extensions/"
 )
 
 var (
@@ -161,19 +171,23 @@ func listCmdHandler(c *cli.Context) error {
 
 // syncCmdHandler syncs local vscode configuration with remote box
 func syncCmdHandler(c *cli.Context) error {
-	start := time.Now()
-	fmt.Println("Start syncing settings")
-	// Separate goroutines ?
-	if err := syncUser(remoteHost, "settings"); err != nil {
-		log.Fatalf("Failed to sync user settings: %v", err)
-	}
-	fmt.Printf("Sync user settings in: %s\n", time.Since(start))
+	syncChan := make(chan error)
 
-	fmt.Println("Start syncing extensions")
-	if err := syncUser(remoteHost, "extensions"); err != nil {
-		log.Fatalf("Failed to sync user extensions: %v", err)
+	start := time.Now()
+	for _, config := range []string{settingsKind, extensionsKind} {
+		go func(config string) {
+			fmt.Printf("Start syncing %s\n", config)
+			syncChan <- syncUser(remoteHost, config)
+			fmt.Printf("Sync user %s in: %s\n", config, time.Since(start))
+		}(config)
 	}
-	fmt.Printf("Sync user settings in: %s\n", time.Since(start))
+
+	for i := 0; i < 2; i++ {
+		if err := <-syncChan; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -212,9 +226,9 @@ func settingsDir() (string, error) {
 	var path string
 	switch runtime.GOOS {
 	case "linux":
-		path = os.ExpandEnv("$HOME/.config/Code/User/")
+		path = os.ExpandEnv(vscodeLinuxSettings)
 	case "darwin":
-		path = os.ExpandEnv("$HOME/Library/Application Support/Code/User/")
+		path = os.ExpandEnv(vscodeDarwinSettings)
 	default:
 		return "", fmt.Errorf("Unsupported platform: %s", runtime.GOOS)
 	}
@@ -230,7 +244,7 @@ func extensionsDir() (string, error) {
 	var path string
 	switch runtime.GOOS {
 	case "linux", "darwin":
-		path = os.ExpandEnv("$HOME/.vscode/extensions/")
+		path = os.ExpandEnv(vscodeExtensions)
 	default:
 		return "", fmt.Errorf("Unsupported platform: %s", runtime.GOOS)
 	}
