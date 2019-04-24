@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -12,7 +12,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/code-server-proxy/proxy"
+	"github.com/golang/protobuf/proto"
+
+	"github.com/code-server-proxy/healthproto"
+
 	"github.com/pkg/browser"
 	cli "gopkg.in/urfave/cli.v1"
 )
@@ -149,7 +152,7 @@ func commandExists(name string) bool {
 
 // listCmdHandler handles "csp-cli ls" command which lists all remote projects and their statuses
 func listCmdHandler(c *cli.Context) error {
-	statusAPI := fmt.Sprintf("%s/", proxyURL)
+	statusAPI := fmt.Sprintf("%s/status", proxyURL)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
 		return err
@@ -157,12 +160,17 @@ func listCmdHandler(c *cli.Context) error {
 
 	defer resp.Body.Close()
 
-	heathcheckResponse := proxy.HealthcheckResponse{}
-	if derr := json.NewDecoder(resp.Body).Decode(&heathcheckResponse); derr != nil {
-		return derr
+	data, rerr := ioutil.ReadAll(resp.Body)
+	if rerr != nil {
+		return err
 	}
 
-	for _, server := range heathcheckResponse.CodeServers {
+	healthCheck := healthproto.HealthCheck{}
+	if uerr := proto.Unmarshal(data, &healthCheck); uerr != nil {
+		return uerr
+	}
+
+	for _, server := range healthCheck.CodeServers {
 		fmt.Printf("%-20s %s\n", server.Alias, server.State)
 	}
 

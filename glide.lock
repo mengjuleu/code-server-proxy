@@ -1,8 +1,12 @@
 hash: 8eb71433d09d23e68d4801035f735d8b96daed9d3032d437977404a08f11cea0
-updated: 2019-04-24T02:21:20.971795213Z
+updated: 2019-04-24T22:44:58.258211533Z
 imports:
 - name: github.com/armon/go-radix
   version: 1a2de0c21c94309923825da3df33a4381872c795
+- name: github.com/golang/protobuf
+  version: e91709a02e0e8ff8b86b7aa913fdc9ae9498e825
+  subpackages:
+  - proto
 - name: github.com/gorilla/mux
   version: c5c6c98bc25355028a63748a498942a6398ccd22
 - name: github.com/gorilla/websocket
