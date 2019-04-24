@@ -220,7 +220,8 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	for _, s := range p.code.Servers {
 		state := "NOT OK"
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-		if err == nil {
+
+		if err == nil && resp.StatusCode == http.StatusOK {
 			defer resp.Body.Close()
 
 			codeServerPingResponse := CodeServerPingResponse{}
@@ -273,7 +274,8 @@ func (p *Proxy) statusHandler(w http.ResponseWriter, r *http.Request) {
 	for _, s := range p.code.Servers {
 		state := "NOT OK"
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-		if err == nil {
+
+		if err == nil && resp.StatusCode == http.StatusOK {
 			defer resp.Body.Close()
 
 			codeServerPingResponse := CodeServerPingResponse{}
