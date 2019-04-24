@@ -1,0 +1,16 @@
+syntax = "proto3";
+package healthproto;
+
+
+message CodeServerStatus {
+    int32 port = 1;
+    string state = 2;
+    string url = 3;
+    string alias = 4;
+    string aliasURL = 5;
+}
+
+message HealthCheck {
+    string codeServerProxy = 1;
+    repeated CodeServerStatus codeServers = 2;
+}
