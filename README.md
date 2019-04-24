@@ -166,4 +166,10 @@ Open a project in local box. It opens our project with Chrome browser in app mod
 > csp-cli project1
 ```
 
+Open a code-sever project with URL
+
+```bash
+> csp-cli open <URL of project>
+```
+
 
