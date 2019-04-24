@@ -1,5 +1,5 @@
 hash: 8eb71433d09d23e68d4801035f735d8b96daed9d3032d437977404a08f11cea0
-updated: 2019-04-16T16:55:43.287665972Z
+updated: 2019-04-24T02:21:20.971795213Z
 imports:
 - name: github.com/armon/go-radix
   version: 1a2de0c21c94309923825da3df33a4381872c795
@@ -7,6 +7,8 @@ imports:
   version: c5c6c98bc25355028a63748a498942a6398ccd22
 - name: github.com/gorilla/websocket
   version: 66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d
+- name: github.com/pkg/browser
+  version: 0a3d74bf9ce488f035cf5bc36f753a711bc74334
 - name: github.com/sirupsen/logrus
   version: f3df9aeffda7c12bd9f5a03f9251d75d35993165
 - name: golang.org/x/crypto
