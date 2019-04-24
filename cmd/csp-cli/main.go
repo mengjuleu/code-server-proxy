@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,6 +91,11 @@ func main() {
 			Usage:   "Sync local vscode settings",
 			Action:  syncCmdHandler,
 		},
+		{
+			Name:   "open",
+			Usage:  "Open a code-server project via URL",
+			Action: openCmdHandler,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -145,6 +151,21 @@ func openBrowser(url string) error {
 func commandExists(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+func openCmdHandler(c *cli.Context) error {
+	codeServerURL := c.Args().Get(0)
+
+	p, err := url.ParseRequestURI(codeServerURL)
+	if err != nil {
+		return err
+	}
+
+	if err = openBrowser(p.String()); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // listCmdHandler handles "csp-cli ls" command which lists all remote projects and their statuses
