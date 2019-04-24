@@ -24,11 +24,9 @@ To solve these problems, we need a single endpoint which receives traffic and pr
 
 ```yaml
 servers:
-  - code-server1:
-    path: /a/b/c
+  - path: /a/b/c
     port: 8888
-  - code-server2:
-    path: /d/e/f
+  - path: /d/e/f
     port: 9999
 ```
 
@@ -46,10 +44,12 @@ cd $GOPATH/src/github.com/code-server-proxy
 make install
 ```
 
-Make sure you have `$GOPATH/bin` set up in `.bashrc` or `.zshrc`:
+Make sure you have `$GOPATH/bin` and `code-server-proxy` set up in `.bashrc` or `.zshrc`:
 
 ```bash
 export PATH="$PATH:$GOPATH/bin"
+export REMOTE_HOST="example@example.org"
+export PROXY_URL="https://your-code-server-proxy-url"
 ```
 
 Run help command of code-server-proxy
