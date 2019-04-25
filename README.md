@@ -36,6 +36,8 @@ TBD
 
 ### Step 3. Install Code-server-proxy
 
+Make sure `glide is installed` https://github.com/mengjuleu/code-server-proxy 
+
 Clone code-server-proxy repo and install: 
 
 ```bash
