@@ -114,7 +114,6 @@ func TestHealthCheckHandler(t *testing.T) {
 	uerr := json.Unmarshal(rr.Body.Bytes(), &resp)
 	require.NoError(t, uerr)
 
-	fmt.Println(resp.CodeServerProxy)
 	require.Equal(t, "OK", resp.CodeServerProxy, "incorrect code-server-proxy status")
 
 	for _, status := range resp.CodeServers {
