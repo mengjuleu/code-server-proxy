@@ -303,7 +303,6 @@ func (p *Proxy) codeServerStatusHandler(w http.ResponseWriter, r *http.Request) 
 	codeServerStatus := healthproto.CodeServerStatus{
 		Port:  port.(int64),
 		State: state,
-		Alias: name,
 	}
 
 	b, merr := proto.Marshal(&codeServerStatus)
