@@ -179,3 +179,15 @@ func TestRegisterHandler(t *testing.T) {
 	_, ok = p.portMap.Get(path.Dir(reqBody.Folder))
 	require.True(t, ok, "parent path not found in radix tree")
 }
+
+func TestCheckCodeServerStatus(t *testing.T) {
+	port := 9999
+	expectedState := "NOT OK"
+	p, err := newTestProxy()
+	require.NoError(t, err)
+
+	state, err := p.checkCodeServerStatus(port)
+	require.NoError(t, err)
+
+	require.Equal(t, expectedState, state)
+}

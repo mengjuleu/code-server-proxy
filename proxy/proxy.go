@@ -26,6 +26,7 @@ import (
 // Proxy is a code-server proxy
 type Proxy struct {
 	*mux.Router
+	client      *http.Client
 	upgrader    websocket.Upgrader
 	code        Code
 	portMap     *radix.Tree
@@ -113,6 +114,9 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 			return nil, err
 		}
 	}
+
+	// Setup client
+	p.client = &http.Client{}
 
 	// Construct radix tree
 	p.portMap = radix.New()
@@ -301,7 +305,7 @@ func (p *Proxy) codeServerStatusHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	codeServerStatus := healthproto.CodeServerStatus{
-		Port:  port.(int64),
+		Port:  int64(port.(int)),
 		State: state,
 	}
 
@@ -324,12 +328,6 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 		Path:   cleanedPath,
 	}
 
-	p.logger.WithFields(logrus.Fields{
-		"host":    host,
-		"path":    cleanedPath,
-		"backend": backendHTTPURL.String(),
-	}).Info("Receive forward request")
-
 	req, err := http.NewRequest(r.Method, backendHTTPURL.String(), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -338,11 +336,20 @@ func (p *Proxy) forwardRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	req.Header = r.Header
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	p.logger.WithFields(logrus.Fields{
+		"host":          host,
+		"path":          cleanedPath,
+		"backend":       backendHTTPURL.String(),
+		"response-code": resp.StatusCode,
+		"request-url":   resp.Request.URL,
+		"referer":       r.Referer(),
+	}).Info("Receive forward request")
 
 	for h, vals := range resp.Header {
 		for _, v := range vals {
@@ -432,6 +439,10 @@ func (p *Proxy) removeHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) cleanRequestPath(requestPath string) string {
 	prefix, _, _ := p.portMap.LongestPrefix(requestPath)
 	requestPath = strings.TrimPrefix(requestPath, prefix)
+
+	if strings.HasPrefix(requestPath, "/login") {
+		requestPath = "/login" + requestPath
+	}
 
 	return requestPath
 }
