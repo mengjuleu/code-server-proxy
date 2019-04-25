@@ -219,25 +219,9 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	healthcheckResponse := HealthcheckResponse{}
 
 	for _, s := range p.code.Servers {
-		state := "NOT OK"
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-
-		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-
-			codeServerPingResponse := CodeServerPingResponse{}
-			b, err := ioutil.ReadAll(resp.Body)
-
-			if err != nil {
-				p.logger.Errorf("Failed to read ping request: %v", err)
-			}
-			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
-				p.logger.Errorf("Failed to unmarshal response body: %v", uerr)
-			}
-
-			if codeServerPingResponse.Hostname != "" {
-				state = "OK"
-			}
+		codeServerStatus, err := p.checkCodeServerStatus(s.Port, r.Host, s.Path, s.Alias)
+		if err != nil {
+			p.logger.Errorf("Failed to check code-server status: %v", err)
 		}
 
 		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
@@ -246,7 +230,7 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 			healthcheckResponse.CodeServers,
 			CodeServerStatus{
 				Port:     s.Port,
-				State:    state,
+				State:    codeServerStatus.GetState(),
 				URL:      backendURL.String(),
 				Alias:    s.Alias,
 				AliasURL: aliasURL.String(),
