@@ -107,6 +107,10 @@ func main() {
 			return errors.New("Project name is required")
 		}
 
+		if !checkCodeServerStatus(projectName) {
+			return fmt.Errorf("Code-server %s is not available now", projectName)
+		}
+
 		projectURL := fmt.Sprintf("%s/%s", proxyURL, projectName)
 		return openBrowser(projectURL)
 	}
@@ -191,8 +195,8 @@ func listCmdHandler(c *cli.Context) error {
 		return uerr
 	}
 
-	for _, server := range healthCheck.CodeServers {
-		fmt.Printf("%-20s %s\n", server.Alias, server.State)
+	for _, server := range healthCheck.GetCodeServers() {
+		fmt.Printf("%-20s %s\n", server.GetAlias(), server.GetState())
 	}
 
 	return nil
@@ -303,4 +307,27 @@ func rsync(dst, src string, excludePaths ...string) error {
 	}
 
 	return nil
+}
+
+// checkCodeServerStatus check the status of code-server
+func checkCodeServerStatus(name string) bool {
+	statusAPI := fmt.Sprintf("%s/status/%s", proxyURL, name)
+	resp, err := http.Get(statusAPI) // #nosec
+	if err != nil {
+		return false
+	}
+
+	defer resp.Body.Close()
+
+	data, rerr := ioutil.ReadAll(resp.Body)
+	if rerr != nil {
+		return false
+	}
+
+	healthCheck := healthproto.CodeServerStatus{}
+	if uerr := proto.Unmarshal(data, &healthCheck); uerr != nil {
+		return false
+	}
+
+	return healthCheck.GetState() == "OK"
 }

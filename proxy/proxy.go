@@ -136,7 +136,8 @@ func NewProxy(options ...func(*Proxy) error) (*Proxy, error) {
 
 func (p *Proxy) route() {
 	p.HandleFunc("/", p.HealthCheckHandler)
-	p.HandleFunc("/status", p.statusHandler)
+	p.HandleFunc("/status/{name}", p.codeServerStatusHandler).Methods("GET")
+	p.HandleFunc("/status", p.statusHandler).Methods("GET")
 
 	p.HandleFunc("/register", p.registerHandler).Methods("POST")
 	p.HandleFunc("/remove/{name}", p.removeHandler).Methods("DELETE")
@@ -218,25 +219,9 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	healthcheckResponse := HealthcheckResponse{}
 
 	for _, s := range p.code.Servers {
-		state := "NOT OK"
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-
-		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-
-			codeServerPingResponse := CodeServerPingResponse{}
-			b, err := ioutil.ReadAll(resp.Body)
-
-			if err != nil {
-				p.logger.Errorf("Failed to read ping request: %v", err)
-			}
-			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
-				p.logger.Errorf("Failed to unmarshal response body: %v", uerr)
-			}
-
-			if codeServerPingResponse.Hostname != "" {
-				state = "OK"
-			}
+		codeServerStatus, err := p.checkCodeServerStatus(s.Port, r.Host, s.Path, s.Alias)
+		if err != nil {
+			p.logger.Errorf("Failed to check code-server status: %v", err)
 		}
 
 		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
@@ -245,7 +230,7 @@ func (p *Proxy) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 			healthcheckResponse.CodeServers,
 			CodeServerStatus{
 				Port:     s.Port,
-				State:    state,
+				State:    codeServerStatus.GetState(),
 				URL:      backendURL.String(),
 				Alias:    s.Alias,
 				AliasURL: aliasURL.String(),
@@ -272,44 +257,44 @@ func (p *Proxy) statusHandler(w http.ResponseWriter, r *http.Request) {
 	healthCheck.CodeServerProxy = "OK"
 
 	for _, s := range p.code.Servers {
-		state := "NOT OK"
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", s.Port))
-
-		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-
-			codeServerPingResponse := CodeServerPingResponse{}
-			b, err := ioutil.ReadAll(resp.Body)
-
-			if err != nil {
-				p.logger.Errorf("Failed to read ping request: %v", err)
-			}
-			if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
-				p.logger.Errorf("Failed to unmarshal response body: %v", uerr)
-			}
-
-			if codeServerPingResponse.Hostname != "" {
-				state = "OK"
-			}
+		codeServerStatus, err := p.checkCodeServerStatus(s.Port, r.Host, s.Path, s.Alias)
+		if err != nil {
+			p.logger.Errorf("Failed to check code-server status: %v", err)
 		}
 
-		backendURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Path}
-		aliasURL := url.URL{Scheme: "https", Host: r.Host, Path: s.Alias}
 		healthCheck.CodeServers = append(
 			healthCheck.CodeServers,
-			&healthproto.CodeServerStatus{
-				Port:     int64(s.Port),
-				State:    state,
-				Url:      backendURL.String(),
-				Alias:    s.Alias,
-				AliasURL: aliasURL.String(),
-			},
+			codeServerStatus,
 		)
 	}
 
 	b, merr := proto.Marshal(&healthCheck)
 	if merr != nil {
 		p.logger.Errorf("Failed to marshal healthcheck object: %v", merr)
+	}
+
+	if _, werr := w.Write(b); werr != nil {
+		http.Error(w, werr.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (p *Proxy) codeServerStatusHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := fmt.Sprintf("/%s", vars["name"])
+	port, ok := p.portMap.Get(name)
+	if !ok {
+		http.Error(w, fmt.Sprintf("Project %s does not exist", vars["name"]), http.StatusBadRequest)
+		return
+	}
+
+	codeServerStatus, err := p.checkCodeServerStatus(port.(int), r.Host, "", name)
+	if err != nil {
+		p.logger.Errorf("Failed to check code-server status: %v", err)
+	}
+
+	b, merr := proto.Marshal(codeServerStatus)
+	if merr != nil {
+		p.logger.Errorf("Failed to marshal codeServerStatus object: %v", merr)
 	}
 
 	if _, werr := w.Write(b); werr != nil {
@@ -411,7 +396,7 @@ func (p *Proxy) registerHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) removeHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
-	fmt.Println(p.aliasToPath, name)
+
 	if _, ok := p.aliasToPath[name]; !ok {
 		http.Error(w, fmt.Sprintf("Code-server %s doesn't exist", name), http.StatusBadRequest)
 		return
@@ -464,6 +449,41 @@ func (p *Proxy) transfer(dst, src *websocket.Conn, ch chan error) {
 			ch <- terr
 		}
 	}
+}
+
+// checkCodeServerStatus checks status of code-server by port
+func (p *Proxy) checkCodeServerStatus(port int, host, path, alias string) (*healthproto.CodeServerStatus, error) {
+	state := "NOT OK"
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/ping", port))
+
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+
+		codeServerPingResponse := CodeServerPingResponse{}
+		b, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			return nil, err
+		}
+		if uerr := json.Unmarshal(b, &codeServerPingResponse); uerr != nil {
+			return nil, uerr
+		}
+
+		if codeServerPingResponse.Hostname != "" {
+			state = "OK"
+		}
+	}
+
+	backendURL := url.URL{Scheme: "https", Host: host, Path: path}
+	aliasURL := url.URL{Scheme: "https", Host: host, Path: alias}
+	codeServerStatus := healthproto.CodeServerStatus{
+		Port:     int64(port),
+		State:    state,
+		Url:      backendURL.String(),
+		Alias:    alias,
+		AliasURL: aliasURL.String(),
+	}
+	return &codeServerStatus, nil
 }
 
 // tunnel reads from src websocket connection and sends to dst websocket connection.
