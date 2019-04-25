@@ -301,7 +301,7 @@ func (p *Proxy) codeServerStatusHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	codeServerStatus := healthproto.CodeServerStatus{
-		Port:  port.(int64),
+		Port:  int64(port.(int)),
 		State: state,
 	}
 
