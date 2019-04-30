@@ -6,4 +6,4 @@ go:
   - 1.11.5
 
 script:
-  - env GO111MODULE=on make
+  - make

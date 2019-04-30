@@ -1,32 +1,39 @@
 CMD=github.com/code-server-proxy/cmd/code-server-proxy
 CLICMD=github.com/code-server-proxy/cmd/csp-cli
 
-all: test test-slow
+all: test test-slow lint
 
-test:
+test: .gotdeps
 	go test -race -v ./...
 
-test-slow:
+test-slow: .gotdeps
 	go test -tags=slow -race -v ./...
 
 lint: .gotlint
-	gometalinter --fast \
+	gometalinter --fast --vendor \
 	--enable gofmt \
 	--disable gotype \
 	--disable gocyclo \
 	--exclude="file permissions" --exclude="Errors unhandled" \
 	./...
 
-setup: .gotlint
+setup: .gotglide .gotlint
 
-install:
+install: .gotdeps
 	go install $(CMD)
 
 install-cli:
 	go install $(CLICMD)
 
 .gotlint:
-	go get github.com/alecthomas/gometalinter
+	go get -u github.com/alecthomas/gometalinter
 	gometalinter --install
 	touch $@
 
+.gotglide:
+	go get github.com/Masterminds/glide
+	touch $@
+
+.gotdeps: .gotglide glide.lock
+	glide install
+	touch $@
