@@ -36,14 +36,12 @@ TBD
 
 ### Step 3. Install Code-server-proxy
 
-Make sure `glide is installed` https://github.com/mengjuleu/code-server-proxy 
-
 Clone code-server-proxy repo and install: 
 
 ```bash
 git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
 cd $GOPATH/src/github.com/code-server-proxy
-make install
+GO111MODULE=on make install
 ```
 
 Make sure you have `$GOPATH/bin` and `code-server-proxy` set up in `.bashrc` or `.zshrc`:
@@ -52,9 +50,6 @@ Make sure you have `$GOPATH/bin` and `code-server-proxy` set up in `.bashrc` or 
 export PATH="$PATH:$GOPATH/bin"
 ```
 
-`REMOTE_HOST` is the URL we ssh to.
-
-`PROXY_URL` is the URL of our `code-server-proxy`.
 
 Run help command of code-server-proxy
 
@@ -97,10 +92,10 @@ code-server-proxy \
 
 ### Step 5. Open Browser
 
-Go to `https://<your host name>/path/{path to your project}`.
+Go to `https://<your host name>/{project_name}`.
 
-For example, `https://mleu.coolman.com/path/opt/go/src/github.com/code-server-proxy`,
-where *https://mleuu.coolman.com* is my domain name, *path* is requiired and */opt/go/src/github.com/code-server-proxy* is the project path.
+For example, `https://example.com/code-server-proxy`,
+where **https://example.com** is my domain name, **path** is requiired and **code-server-proxy** is the project path.
 
 ## CSP-CLI
 
@@ -114,7 +109,7 @@ At our local box,
 > git clone https://github.com/mengjuleu/code-server-proxy.git $GOPATH/src/github.com/code-server-proxy
 > pwd
 $GOPATH/src/code-server-proxy
-> make install-cli
+> GO111MODULE=on make install-cli
 go install github.com/code-server-proxy/cmd/csp-cli
 >
 > csp-cli -h
@@ -146,6 +141,10 @@ export REMOTE_HOST="example@example.org"
 export PROXY_URL="https://your-code-server-proxy-url"
 ```
 
+`REMOTE_HOST` is the URL we ssh to.
+
+`PROXY_URL` is the URL of our `code-server-proxy`.
+
 ### Common Usages
 
 Sync your local vscode configuration, use the following command.
@@ -172,6 +171,12 @@ Open a code-sever project with URL
 
 ```bash
 > csp-cli open <URL of project>
+```
+
+## Requirement
+
+```
+go 1.11.5+
 ```
 
 
