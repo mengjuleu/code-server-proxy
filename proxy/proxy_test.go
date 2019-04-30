@@ -105,7 +105,7 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(p.HealthCheckHandler)
+	handler := http.HandlerFunc(p.healthCheckHandler)
 
 	handler.ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code, "incorrect response code")
