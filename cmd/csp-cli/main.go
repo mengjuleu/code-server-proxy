@@ -100,25 +100,13 @@ func main() {
 			Usage:  "Open a code-server project via URL",
 			Action: openCmdHandler,
 		},
-		{
-			Name:   "forward",
-			Usage:  "Forward remote code-server traffic",
-			Action: forwardHandler,
-		},
 	}
 
 	app.Action = func(c *cli.Context) error {
 		projectName := c.Args().Get(0)
+
 		if projectName == "" {
 			return clierror.ErrMissingProjectName
-		}
-
-		if remoteHost == "" {
-			return clierror.ErrMissingRemoteHost
-		}
-
-		if proxyURL == "" {
-			return clierror.ErrMissingProxyURL
 		}
 
 		status, err := checkCodeServerStatus(projectName)
@@ -130,8 +118,43 @@ func main() {
 			return fmt.Errorf("Code-server %s is not available now", projectName)
 		}
 
-		projectURL := fmt.Sprintf("%s/%s", proxyURL, projectName)
-		return openBrowser(projectURL)
+		sshCmdStr := fmt.Sprintf("ssh -tt -q -L %s %s",
+			fmt.Sprintf("%d:localhost:%d", status.GetPort(), status.GetPort()),
+			remoteHost)
+
+		sshCmd := exec.Command("sh", "-c", sshCmdStr)
+
+		fmt.Println("Open SSH tunnel...")
+		go sshCmd.Run()
+
+		codeServerURL := fmt.Sprintf("http://localhost:%d", status.GetPort())
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		client := http.Client{
+			Timeout: time.Second * 3,
+		}
+
+		fmt.Printf("Wait for remote code-server %s\n", projectName)
+
+		for {
+			if ctx.Err() != nil {
+				return fmt.Errorf("code-server didn't start in time: %v", ctx.Err())
+			}
+			// Waits for code-server to be available before opening the browser.
+			resp, err := client.Get(codeServerURL)
+			if err != nil {
+				continue
+			}
+			resp.Body.Close()
+			break
+		}
+
+		fmt.Println("Open Browser...")
+		if oerr := openBrowser(codeServerURL); oerr != nil {
+			return oerr
+		}
+		return nil
 	}
 
 	if rerr := app.Run(os.Args); rerr != nil {
@@ -170,7 +193,6 @@ func openBrowser(url string) error {
 	if err := openCmd.Start(); err != nil {
 		return err
 	}
-	fmt.Println("Browser PID:", openCmd.Process.Pid)
 	return nil
 }
 
@@ -249,67 +271,6 @@ func syncCmdHandler(c *cli.Context) error {
 		}
 	}
 
-	return nil
-}
-
-// forwardHandler forwards traffic to remote code-server
-func forwardHandler(c *cli.Context) error {
-	projectName := c.Args().Get(0)
-
-	if projectName == "" {
-		return clierror.ErrMissingProjectName
-	}
-
-	status, err := checkCodeServerStatus(projectName)
-	if err != nil {
-		return err
-	}
-
-	if status.GetState() != "OK" {
-		return fmt.Errorf("Code-server %s is not available now", projectName)
-	}
-
-	sshCmdStr := fmt.Sprintf("ssh -tt -q -L %s %s",
-		fmt.Sprintf("%d:localhost:%d", status.GetPort(), status.GetPort()),
-		remoteHost)
-
-	sshCmd := exec.Command("sh", "-c", sshCmdStr)
-
-	fmt.Println("Open SSH tunnel...")
-
-	//go sshCmd.Run()
-	sshCmd.Start()
-	fmt.Println("PID:", sshCmd.Process.Pid)
-
-	codeServerURL := fmt.Sprintf("http://localhost:%d", status.GetPort())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	client := http.Client{
-		Timeout: time.Second * 3,
-	}
-
-	fmt.Printf("Wait for remote code-server %s\n", projectName)
-
-	for {
-		if ctx.Err() != nil {
-			return fmt.Errorf("code-server didn't start in time: %v", ctx.Err())
-		}
-		// Waits for code-server to be available before opening the browser.
-		resp, err := client.Get(codeServerURL)
-		if err != nil {
-			fmt.Print(".")
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		resp.Body.Close()
-		break
-	}
-
-	fmt.Println("Open Browser...")
-	if oerr := openBrowser(codeServerURL); oerr != nil {
-		return oerr
-	}
 	return nil
 }
 
