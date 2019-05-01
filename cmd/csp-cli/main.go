@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
+	"github.com/code-server-proxy/cmd/csp-cli/clierror"
 	"github.com/code-server-proxy/healthproto"
 
 	"github.com/pkg/browser"
@@ -110,7 +110,15 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		projectName := c.Args().Get(0)
 		if projectName == "" {
-			return errors.New("Project name is required")
+			return clierror.ErrMissingProjectName
+		}
+
+		if remoteHost == "" {
+			return clierror.ErrMissingRemoteHost
+		}
+
+		if proxyURL == "" {
+			return clierror.ErrMissingProxyURL
 		}
 
 		status, err := checkCodeServerStatus(projectName)
@@ -162,6 +170,7 @@ func openBrowser(url string) error {
 	if err := openCmd.Start(); err != nil {
 		return err
 	}
+	fmt.Println("Browser PID:", openCmd.Process.Pid)
 	return nil
 }
 
@@ -188,6 +197,10 @@ func openCmdHandler(c *cli.Context) error {
 
 // listCmdHandler handles "csp-cli ls" command which lists all remote projects and their statuses
 func listCmdHandler(c *cli.Context) error {
+	if proxyURL == "" {
+		return clierror.ErrMissingProxyURL
+	}
+
 	statusAPI := fmt.Sprintf("%s/status", proxyURL)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
@@ -217,6 +230,10 @@ func listCmdHandler(c *cli.Context) error {
 func syncCmdHandler(c *cli.Context) error {
 	syncChan := make(chan error)
 
+	if remoteHost == "" {
+		return clierror.ErrMissingRemoteHost
+	}
+
 	start := time.Now()
 	for _, config := range []string{settingsKind, extensionsKind} {
 		go func(config string) {
@@ -238,6 +255,11 @@ func syncCmdHandler(c *cli.Context) error {
 // forwardHandler forwards traffic to remote code-server
 func forwardHandler(c *cli.Context) error {
 	projectName := c.Args().Get(0)
+
+	if projectName == "" {
+		return clierror.ErrMissingProjectName
+	}
+
 	status, err := checkCodeServerStatus(projectName)
 	if err != nil {
 		return err
@@ -255,7 +277,9 @@ func forwardHandler(c *cli.Context) error {
 
 	fmt.Println("Open SSH tunnel...")
 
-	go sshCmd.Run()
+	//go sshCmd.Run()
+	sshCmd.Start()
+	fmt.Println("PID:", sshCmd.Process.Pid)
 
 	codeServerURL := fmt.Sprintf("http://localhost:%d", status.GetPort())
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -283,7 +307,9 @@ func forwardHandler(c *cli.Context) error {
 	}
 
 	fmt.Println("Open Browser...")
-	openBrowser(codeServerURL)
+	if oerr := openBrowser(codeServerURL); oerr != nil {
+		return oerr
+	}
 	return nil
 }
 
@@ -374,6 +400,10 @@ func rsync(dst, src string, excludePaths ...string) error {
 
 // checkCodeServerStatus check the status of code-server
 func checkCodeServerStatus(name string) (*healthproto.CodeServerStatus, error) {
+	if proxyURL == "" {
+		return nil, clierror.ErrMissingProxyURL
+	}
+
 	statusAPI := fmt.Sprintf("%s/status/%s", proxyURL, name)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
