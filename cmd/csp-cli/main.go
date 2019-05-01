@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -99,6 +100,11 @@ func main() {
 			Usage:  "Open a code-server project via URL",
 			Action: openCmdHandler,
 		},
+		{
+			Name:   "forward",
+			Usage:  "Forward remote code-server traffic",
+			Action: forwardHandler,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -107,7 +113,12 @@ func main() {
 			return errors.New("Project name is required")
 		}
 
-		if !checkCodeServerStatus(projectName) {
+		status, err := checkCodeServerStatus(projectName)
+		if err != nil {
+			return err
+		}
+
+		if status.GetState() != "OK" {
 			return fmt.Errorf("Code-server %s is not available now", projectName)
 		}
 
@@ -196,7 +207,7 @@ func listCmdHandler(c *cli.Context) error {
 	}
 
 	for _, server := range healthCheck.GetCodeServers() {
-		fmt.Printf("%-20s %s\n", server.GetAlias(), server.GetState())
+		fmt.Printf("%-25s %s\n", server.GetAlias(), server.GetState())
 	}
 
 	return nil
@@ -221,6 +232,58 @@ func syncCmdHandler(c *cli.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// forwardHandler forwards traffic to remote code-server
+func forwardHandler(c *cli.Context) error {
+	projectName := c.Args().Get(0)
+	status, err := checkCodeServerStatus(projectName)
+	if err != nil {
+		return err
+	}
+
+	if status.GetState() != "OK" {
+		return fmt.Errorf("Code-server %s is not available now", projectName)
+	}
+
+	sshCmdStr := fmt.Sprintf("ssh -tt -q -L %s %s",
+		fmt.Sprintf("%d:localhost:%d", status.GetPort(), status.GetPort()),
+		remoteHost)
+
+	sshCmd := exec.Command("sh", "-c", sshCmdStr)
+
+	fmt.Println("Open SSH tunnel...")
+
+	go sshCmd.Run()
+
+	codeServerURL := fmt.Sprintf("http://localhost:%d", status.GetPort())
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	client := http.Client{
+		Timeout: time.Second * 3,
+	}
+
+	fmt.Printf("Wait for remote code-server %s\n", projectName)
+
+	for {
+		if ctx.Err() != nil {
+			return fmt.Errorf("code-server didn't start in time: %v", ctx.Err())
+		}
+		// Waits for code-server to be available before opening the browser.
+		resp, err := client.Get(codeServerURL)
+		if err != nil {
+			fmt.Print(".")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		resp.Body.Close()
+		break
+	}
+
+	fmt.Println("Open Browser...")
+	openBrowser(codeServerURL)
 	return nil
 }
 
@@ -310,24 +373,24 @@ func rsync(dst, src string, excludePaths ...string) error {
 }
 
 // checkCodeServerStatus check the status of code-server
-func checkCodeServerStatus(name string) bool {
+func checkCodeServerStatus(name string) (*healthproto.CodeServerStatus, error) {
 	statusAPI := fmt.Sprintf("%s/status/%s", proxyURL, name)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
-		return false
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 
 	data, rerr := ioutil.ReadAll(resp.Body)
 	if rerr != nil {
-		return false
+		return nil, rerr
 	}
 
-	healthCheck := healthproto.CodeServerStatus{}
-	if uerr := proto.Unmarshal(data, &healthCheck); uerr != nil {
-		return false
+	status := healthproto.CodeServerStatus{}
+	if uerr := proto.Unmarshal(data, &status); uerr != nil {
+		return nil, uerr
 	}
 
-	return healthCheck.GetState() == "OK"
+	return &status, nil
 }
