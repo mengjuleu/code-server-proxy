@@ -1,13 +1,2 @@
 servers:
-- path: /opt/go/src/github.com/code-server-proxy
-  alias: code-server-proxy
-  port: 9056
-- path: /opt/go/src/bitbucket.org/bitbucket/scmweb
-  alias: scmweb-proj
-  port: 9057
-- path: /opt/go/src/bitbucket.org/bitbucket/metareposrv
-  alias: metareposrv-proj
-  port: 9058
-- path: /opt/python/ladle
-  alias: ladle-proj
-  port: 9059
+
