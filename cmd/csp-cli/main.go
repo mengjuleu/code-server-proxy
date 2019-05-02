@@ -1,12 +1,11 @@
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
+	"github.com/code-server-proxy/cmd/csp-cli/clierror"
 	"github.com/code-server-proxy/healthproto"
 
 	"github.com/pkg/browser"
@@ -27,8 +27,6 @@ const (
 )
 
 const (
-	defaultProxyURL        = ""
-	defaultHost            = ""
 	vsCodeConfigDirEnv     = "VSCODE_CONFIG_DIR"
 	vsCodeExtensionsDirEnv = "VSCODE_EXTENSIONS_DIR"
 	remoteSettingsDir      = ".local/share/code-server/User/"
@@ -69,14 +67,12 @@ func main() {
 			Name:        "proxy-url",
 			Destination: &proxyURL,
 			Usage:       "--proxy-url=url of code-server-proxy",
-			Value:       defaultProxyURL,
 			EnvVar:      "PROXY_URL",
 		},
 		cli.StringFlag{
 			Name:        "remote-host",
 			Destination: &remoteHost,
 			Usage:       "--remote-host=host of dev environment",
-			Value:       defaultHost,
 			EnvVar:      "REMOTE_HOST",
 		},
 	}
@@ -95,24 +91,12 @@ func main() {
 			Action:  syncCmdHandler,
 		},
 		{
-			Name:   "open",
-			Usage:  "Open a code-server project via URL",
-			Action: openCmdHandler,
+			Name:      "open",
+			Aliases:   []string{"op"},
+			Usage:     "Open a code-server project",
+			Action:    openCmdHandler,
+			UsageText: "csp-cli open PROJECT [arguments...]",
 		},
-	}
-
-	app.Action = func(c *cli.Context) error {
-		projectName := c.Args().Get(0)
-		if projectName == "" {
-			return errors.New("Project name is required")
-		}
-
-		if !checkCodeServerStatus(projectName) {
-			return fmt.Errorf("Code-server %s is not available now", projectName)
-		}
-
-		projectURL := fmt.Sprintf("%s/%s", proxyURL, projectName)
-		return openBrowser(projectURL)
 	}
 
 	if rerr := app.Run(os.Args); rerr != nil {
@@ -161,22 +145,70 @@ func commandExists(name string) bool {
 }
 
 func openCmdHandler(c *cli.Context) error {
-	codeServerURL := c.Args().Get(0)
+	projectName := c.Args().Get(0)
+	if projectName == "" {
+		cli.ShowCommandHelpAndExit(c, "open", 1)
+		return clierror.ErrMissingProjectName
+	}
 
-	p, err := url.ParseRequestURI(codeServerURL)
+	if !c.GlobalIsSet("remote-host") {
+		return clierror.ErrMissingRemoteHost
+	}
+
+	status, err := checkCodeServerStatus(projectName)
 	if err != nil {
 		return err
 	}
 
-	if err = openBrowser(p.String()); err != nil {
-		return err
+	if status.GetState() != "OK" {
+		return fmt.Errorf("Code-server %s is not available now", projectName)
 	}
 
+	sshCmdStr := fmt.Sprintf("ssh -tt -q -L %s %s",
+		fmt.Sprintf("%d:localhost:%d", status.GetPort(), status.GetPort()),
+		remoteHost)
+
+	sshCmd := exec.Command("sh", "-c", sshCmdStr)
+
+	fmt.Println("Open SSH tunnel...")
+	go sshCmd.Run()
+
+	codeServerURL := fmt.Sprintf("http://localhost:%d", status.GetPort())
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	client := http.Client{
+		Timeout: time.Second * 3,
+	}
+
+	fmt.Printf("Wait for remote code-server %s\n", projectName)
+
+	for {
+		if ctx.Err() != nil {
+			return fmt.Errorf("code-server didn't start in time: %v", ctx.Err())
+		}
+		// Waits for code-server to be available before opening the browser.
+		resp, err := client.Get(codeServerURL)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		break
+	}
+
+	fmt.Println("Open Browser...")
+	if oerr := openBrowser(codeServerURL); oerr != nil {
+		return oerr
+	}
 	return nil
 }
 
 // listCmdHandler handles "csp-cli ls" command which lists all remote projects and their statuses
 func listCmdHandler(c *cli.Context) error {
+	if !c.GlobalIsSet("proxy-url") {
+		return clierror.ErrMissingProxyURL
+	}
+
 	statusAPI := fmt.Sprintf("%s/status", proxyURL)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
@@ -196,7 +228,7 @@ func listCmdHandler(c *cli.Context) error {
 	}
 
 	for _, server := range healthCheck.GetCodeServers() {
-		fmt.Printf("%-20s %s\n", server.GetAlias(), server.GetState())
+		fmt.Printf("%-25s %s\n", server.GetAlias(), server.GetState())
 	}
 
 	return nil
@@ -205,6 +237,10 @@ func listCmdHandler(c *cli.Context) error {
 // syncCmdHandler syncs local vscode configuration with remote box
 func syncCmdHandler(c *cli.Context) error {
 	syncChan := make(chan error)
+
+	if !c.GlobalIsSet("remote-host") {
+		return clierror.ErrMissingRemoteHost
+	}
 
 	start := time.Now()
 	for _, config := range []string{settingsKind, extensionsKind} {
@@ -310,24 +346,33 @@ func rsync(dst, src string, excludePaths ...string) error {
 }
 
 // checkCodeServerStatus check the status of code-server
-func checkCodeServerStatus(name string) bool {
+func checkCodeServerStatus(name string) (*healthproto.CodeServerStatus, error) {
+	if proxyURL == "" {
+		return nil, clierror.ErrMissingProxyURL
+	}
+
 	statusAPI := fmt.Sprintf("%s/status/%s", proxyURL, name)
 	resp, err := http.Get(statusAPI) // #nosec
 	if err != nil {
-		return false
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 
 	data, rerr := ioutil.ReadAll(resp.Body)
 	if rerr != nil {
-		return false
+		return nil, rerr
 	}
 
-	healthCheck := healthproto.CodeServerStatus{}
-	if uerr := proto.Unmarshal(data, &healthCheck); uerr != nil {
-		return false
+	status := healthproto.CodeServerStatus{}
+	if uerr := proto.Unmarshal(data, &status); uerr != nil {
+		return nil, uerr
 	}
 
-	return healthCheck.GetState() == "OK"
+	return &status, nil
+}
+
+// checkArgs check if an arg exists or not in cli context
+func checkArgs(c *cli.Context, name string) bool {
+	return false
 }
