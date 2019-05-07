@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -150,6 +151,7 @@ func openCmdHandler(c *cli.Context) error {
 		cli.ShowCommandHelpAndExit(c, "open", 1)
 		return clierror.ErrMissingProjectName
 	}
+	projectName = fmt.Sprintf("%s-proj", projectName)
 
 	if !c.GlobalIsSet("remote-host") {
 		return clierror.ErrMissingRemoteHost
@@ -228,7 +230,8 @@ func listCmdHandler(c *cli.Context) error {
 	}
 
 	for _, server := range healthCheck.GetCodeServers() {
-		fmt.Printf("%-25s %s\n", server.GetAlias(), server.GetState())
+		alias := strings.TrimSuffix(server.GetAlias(), "-proj")
+		fmt.Printf("%-25s %s\n", alias, server.GetState())
 	}
 
 	return nil
